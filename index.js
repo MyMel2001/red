@@ -22,6 +22,8 @@ const qdb = require('quick.db');
 // Use DB_FILEPATH from .env, fallback if needed
 const db = new qdb.QuickDB({ filePath: process.env.DB_FILEPATH || './social_network_db.sqlite' });
 
+const domain = process.env.DOMAIN || "localhost"
+
 // --- Initialization Block to Ensure Schema ---
 // This routine ensures that 'users' is an object and 'posts' is an array,
 // preventing the "not an array" error when using db.push().
@@ -667,7 +669,7 @@ app.get('/', requireLogin, async (req, res) => {
             // Logic to display the share URL box if the ID matches the query param
             let shareUrlBox = '';
             if (sharePostId && post.id === sharePostId) {
-                const fullShareUrl = `http://localhost:${port}/post/${post.id}`; // Generate the shareable URL
+                const fullShareUrl = `http://${domain}:${port}/post/${post.id}`; // Generate the shareable URL
                 shareUrlBox = `
                     <div style="margin-top: 10px; padding: 8px; border: 1px dashed #0077cc; background-color: #e6f7ff;">
                         <p style="margin: 0; font-size: 12px; color: #333; font-weight: bold;">
