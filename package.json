@@ -15,6 +15,6 @@
     "express-session": "^1.18.0",
     "quick.db": "^9.1.7"
   },
-  "author": "MyMel2001",
+  "author": "NodeMixaholic",
   "license": "MIT"
 }
