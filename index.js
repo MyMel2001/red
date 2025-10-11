@@ -742,13 +742,6 @@ app.get('/', (req, res) => {
 // --- Server Start ---
 
 // Ensure the database initialization completes before starting the Express server.
-initializeDatabase().then(() => {
-    app.listen(port, "0.0.0.0", () => {
-        console.log(`[SERVER] X-erpt social network running at http://0.0.0.0:${port}`);
-        console.log(`[CONFIG] Session Secret: ${process.env.SESSION_SECRET ? 'Loaded from .env' : 'Using default'}`);
-        console.log('[INFO] Designed for IE5+ compatibility using simple HTML/CSS and server-side rendering.');
-    });
-}).catch(e => {
-    console.error('FATAL: Database initialization failed.', e);
-});
-
+app.listen(port, () => {
+  console.log(`Listening on port ${port}`)
+})
