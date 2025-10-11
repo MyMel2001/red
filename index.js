@@ -669,7 +669,7 @@ app.get('/', requireLogin, async (req, res) => {
             // Logic to display the share URL box if the ID matches the query param
             let shareUrlBox = '';
             if (sharePostId && post.id === sharePostId) {
-                const fullShareUrl = `http://${domain}:${port}/post/${post.id}`; // Generate the shareable URL
+                const fullShareUrl = `http://${domain}/post/${post.id}`; // Generate the shareable URL
                 shareUrlBox = `
                     <div style="margin-top: 10px; padding: 8px; border: 1px dashed #0077cc; background-color: #e6f7ff;">
                         <p style="margin: 0; font-size: 12px; color: #333; font-weight: bold;">
