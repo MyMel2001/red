@@ -85,6 +85,14 @@ async function initializeDatabase() {
     const posts = await db.get('posts');
     if (!Array.isArray(posts)) {
         await db.set('posts', []);
+    } else {
+        // Ensure posts have necessary like properties
+        const updatedPosts = posts.map(post => ({
+            ...post,
+            likes: post.likes || 0,
+            likedBy: post.likedBy || []
+        }));
+        await db.set('posts', updatedPosts);
     }
 
     const messages = await db.get('messages');
@@ -176,6 +184,13 @@ async function getPostsByUserId(userId) {
     return allPosts
         .filter(post => post.userId === userId)
         .sort((a, b) => b.timestamp - a.timestamp);
+}
+
+// NEW UTILITY: Get a single post by ID
+async function getPostById(postId) {
+    const postsRaw = await db.get('posts');
+    const allPosts = Array.isArray(postsRaw) ? postsRaw : Object.values(postsRaw || {});
+    return allPosts.find(post => post.id === postId);
 }
 
 
@@ -982,6 +997,107 @@ app.get('/search', requireLogin, async (req, res) => {
     `;
 
     res.send(createHtml('Search', finalContent, error, req.user));
+});
+
+
+// --- NEW ROUTE: POST /like - Handle liking/unliking a post ---
+app.post('/like', requireLogin, async (req, res) => {
+    const { postId } = req.body;
+    const currentUserId = req.user.id;
+    let redirectUrl = req.header('Referer') || '/';
+
+    if (!postId) {
+        return res.redirect(`${redirectUrl}?error=${encodeURIComponent('Missing post ID.')}`);
+    }
+
+    const postsRaw = await db.get('posts');
+    const allPosts = Array.isArray(postsRaw) ? postsRaw : Object.values(postsRaw || {});
+    const postIndex = allPosts.findIndex(p => p.id === postId);
+
+    if (postIndex === -1) {
+        return res.redirect(`${redirectUrl}?error=${encodeURIComponent('Post not found.')}`);
+    }
+
+    let post = allPosts[postIndex];
+    
+    // Ensure like fields exist
+    post.likedBy = post.likedBy || [];
+    post.likes = post.likes || 0;
+
+    const likedIndex = post.likedBy.indexOf(currentUserId);
+    let message = '';
+
+    if (likedIndex > -1) {
+        // Unlike
+        post.likedBy.splice(likedIndex, 1);
+        post.likes -= 1;
+        message = 'Post unliked.';
+    } else {
+        // Like
+        post.likedBy.push(currentUserId);
+        post.likes += 1;
+        message = 'Post liked!';
+    }
+
+    // Update the post in the array and save back to DB
+    allPosts[postIndex] = post;
+    await db.set('posts', allPosts);
+    
+    res.redirect(`${redirectUrl}?error=${encodeURIComponent(message)}`);
+});
+
+// --- NEW ROUTE: POST /share - Generate share link and redirect to feed ---
+app.post('/share', requireLogin, async (req, res) => {
+    const { postId } = req.body;
+    
+    if (!postId) {
+        return res.redirect(`/?error=${encodeURIComponent('Missing post ID for sharing.')}`);
+    }
+    
+    const post = await getPostById(postId);
+    
+    if (!post) {
+        return res.redirect(`/?error=${encodeURIComponent('Post not found for sharing.')}`);
+    }
+    
+    // Redirects to home, which will then display the share link box for that post ID
+    res.redirect(`/?sharePostId=${postId}`);
+});
+
+// --- NEW ROUTE: GET /post/:postId - View a single post (for public sharing) ---
+app.get('/post/:postId', async (req, res) => {
+    const postId = req.params.postId;
+    const post = await getPostById(postId);
+
+    if (!post) {
+        return res.status(404).send(createHtml('Post Not Found', '<div class="main-col"><div class="box"><h2>Error 404</h2><p>The post you are looking for does not exist or has been deleted.</p></div></div>'));
+    }
+
+    const linkedContent = linkifyContent(post.content);
+    const postImageHtml = post.imageUrl ? `<img src="${post.imageUrl}" class="post-image" alt="Post Image" style="margin-left: 0; max-width: 100%;">` : '';
+
+    const postHtml = `
+        <div class="box">
+            <img src="${post.pfpUrl}" class="pfp" style="float: left;">
+            <div class="post-header" style="margin-left: 5px;">
+                <p style="margin: 0;"><strong class="post-user">${post.username}</strong></p>
+                <small style="color: #666;">Posted on ${post.date}</small>
+            </div>
+            <div style="clear: both;"></div>
+
+            ${postImageHtml}
+            <p class="post-text" style="margin-left: 0;">${linkedContent}</p>
+
+            <div class="post-actions" style="margin-left: 0; padding-top: 10px; border-top: 1px solid #eee;">
+                <strong>Likes:</strong> ${post.likes || 0}
+            </div>
+        </div>
+        <p style="text-align: center;"><a href="/login">Login</a> to reply, like, or follow!</p>
+    `;
+    
+    const bodyContent = `<div class="main-col" style="float: none; width: 60%; margin: 20px auto; padding: 0;"><h2>Post from ${post.username}</h2>${postHtml}</div>`;
+
+    res.send(createHtml(`Post by ${post.username}`, bodyContent));
 });
 
 
