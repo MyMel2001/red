@@ -241,6 +241,7 @@ const IE5_STYLES = `
         padding-left: 10px;
         min-height: 400px;
         text-align: right;
+        align: right;
         box-sizing: border-box;
     }
     .box {
