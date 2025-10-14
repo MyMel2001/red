@@ -74,6 +74,9 @@ async function initializeDatabase() {
             if (!users[userId].pfpUrl) {
                 users[userId].pfpUrl = 'https://i.imgur.com/example_default_pfp.png';
             }
+            // Ensure follow arrays exist
+            users[userId].followers = users[userId].followers || [];
+            users[userId].following = users[userId].following || [];
         }
         await db.set('users', users);
     }
@@ -163,6 +166,15 @@ async function getUserByUsername(username) {
 // NEW UTILITY: Get a user object by their ID
 async function getUserById(userId) {
     return await db.get(`users.${userId}`);
+}
+
+// NEW UTILITY: Get all posts for a specific user ID
+async function getPostsByUserId(userId) {
+    const postsRaw = await db.get('posts');
+    const allPosts = Array.isArray(postsRaw) ? postsRaw : Object.values(postsRaw || {});
+    return allPosts
+        .filter(post => post.userId === userId)
+        .sort((a, b) => b.timestamp - a.timestamp);
 }
 
 
@@ -382,8 +394,7 @@ function navContent(trendingHtml = '') {
             <a href="/">Home</a>
             <a href="/profile">Profile</a>
             <a href="/search">Search</a>
-            <a href="/followers">Following</a>
-            <a href="/followers">Followers</a>
+            <a href="/followers">Following/Followers</a>
             
             <h2 style="margin-top: 15px;">Trending</h2>
             ${trendingHtml}
@@ -690,6 +701,147 @@ app.get('/profile', requireLogin, async (req, res) => {
 });
 
 
+// NEW ROUTE: GET /user/:username - View another user's profile
+app.get('/user/:username', requireLogin, async (req, res) => {
+    const targetUsername = req.params.username;
+    const error = req.query.error || '';
+    
+    const targetUser = await getUserByUsername(targetUsername);
+
+    if (!targetUser) {
+        return res.redirect(`/?error=${encodeURIComponent('User not found.')}`);
+    }
+
+    // Redirect if viewing your own profile
+    if (targetUser.id === req.user.id) {
+        return res.redirect('/profile');
+    }
+
+    const posts = await getPostsByUserId(targetUser.id);
+    const isFollowing = req.user.following && req.user.following.includes(targetUser.id);
+    const followActionText = isFollowing ? 'Unfollow' : 'Follow';
+    const followActionColor = isFollowing ? '#f44336' : '#3cb371';
+    
+    let userPostsHtml = '<h3>Recent Posts</h3>';
+    if (posts.length > 0) {
+        posts.forEach(post => {
+            const linkedContent = linkifyContent(post.content);
+            const postImageHtml = post.imageUrl ? `<img src="${post.imageUrl}" class="post-image" alt="Post Image">` : '';
+
+            userPostsHtml += `
+                <div class="post">
+                    ${postImageHtml}
+                    <p class="post-text">${linkedContent}</p>
+                    <div class="post-actions" style="margin-left: 0;">
+                        <small>Posted on ${post.date}</small>
+                    </div>
+                </div>
+            `;
+        });
+    } else {
+        userPostsHtml += '<p>This user has not posted yet.</p>';
+    }
+
+    const mainColContent = `
+        <div class="main-col" style="float: none; width: 100%; padding: 0;">
+            <div class="box">
+                <img src="${targetUser.pfpUrl}" class="pfp" style="margin-right: 10px;">
+                <h2 style="margin-left: 55px; margin-top: 5px; border-bottom: none;">${targetUser.username}</h2>
+                <div style="clear: both;"></div>
+
+                <p style="font-size: 14px; margin-top: 10px;">
+                    <strong>Bio:</strong> ${targetUser.bio}<br>
+                    <strong>Joined:</strong> ${targetUser.joinDate}<br>
+                    <strong>Followers:</strong> ${(targetUser.followers || []).length}<br>
+                    <strong>Following:</strong> ${(targetUser.following || []).length}
+                </p>
+                
+                <form action="/follow" method="POST" style="margin-top: 10px;">
+                    <input type="hidden" name="targetUserId" value="${targetUser.id}">
+                    <input type="hidden" name="action" value="${isFollowing ? 'unfollow' : 'follow'}">
+                    <input type="submit" value="${followActionText}" style="background-color: ${followActionColor};">
+                </form>
+            </div>
+            
+            <div class="box">
+                ${userPostsHtml}
+            </div>
+        </div>
+    `;
+
+    const finalContent = `
+        ${navContent('')}
+        <div class="main-col">
+            ${mainColContent}
+        </div>
+        <div class="side-col">
+            <div class="box">
+                <p>Viewing ${targetUser.username}'s profile.</p>
+                <p><a href="/">Back to Home Feed</a></p>
+            </div>
+        </div>
+    `;
+
+    res.send(createHtml(targetUser.username, finalContent, error, req.user));
+});
+
+
+// NEW ROUTE: POST /follow - Handle follow/unfollow action
+app.post('/follow', requireLogin, async (req, res) => {
+    const { targetUserId, action } = req.body;
+    const currentUserId = req.user.id;
+
+    if (currentUserId === targetUserId) {
+        return res.redirect(`/?error=${encodeURIComponent('Cannot follow/unfollow yourself.')}`);
+    }
+
+    const targetUser = await getUserById(targetUserId);
+
+    if (!targetUser) {
+        return res.redirect(`/?error=${encodeURIComponent('Target user not found.')}`);
+    }
+
+    let currentUser = await db.get(`users.${currentUserId}`);
+    let targetUserDb = targetUser;
+    
+    // Ensure arrays exist
+    currentUser.following = currentUser.following || [];
+    targetUserDb.followers = targetUserDb.followers || [];
+
+    let message = '';
+    
+    if (action === 'follow') {
+        if (!currentUser.following.includes(targetUserId)) {
+            currentUser.following.push(targetUserId);
+            targetUserDb.followers.push(currentUserId);
+            message = `Successfully followed ${targetUser.username}.`;
+        } else {
+            message = `Already following ${targetUser.username}.`;
+        }
+    } else if (action === 'unfollow') {
+        const followingIndex = currentUser.following.indexOf(targetUserId);
+        if (followingIndex > -1) {
+            currentUser.following.splice(followingIndex, 1);
+        }
+
+        const followerIndex = targetUserDb.followers.indexOf(currentUserId);
+        if (followerIndex > -1) {
+            targetUserDb.followers.splice(followerIndex, 1);
+        }
+        message = `Successfully unfollowed ${targetUser.username}.`;
+    } else {
+        return res.redirect(`/?error=${encodeURIComponent('Invalid follow action.')}`);
+    }
+
+    // Update both users in the database
+    await db.set(`users.${currentUserId}`, currentUser);
+    await db.set(`users.${targetUserId}`, targetUserDb);
+
+    // Redirect back to the user's profile page
+    res.redirect(`/user/${targetUser.username}?error=${encodeURIComponent(message)}`);
+});
+
+
 // NEW ROUTE: GET /followers - View following/followers lists
 app.get('/followers', requireLogin, async (req, res) => {
     const error = req.query.error || '';
@@ -709,7 +861,7 @@ app.get('/followers', requireLogin, async (req, res) => {
                 html += `
                     <div style="padding: 5px 0; border-bottom: 1px dotted #eee;">
                         <img src="${followedUser.pfpUrl}" class="pfp" style="width: 30px; height: 30px;">
-                        <span class="post-user" style="margin-left: 5px; line-height: 30px;">${followedUser.username}</span>
+                        <a href="/user/${followedUser.username}" class="post-user" style="margin-left: 5px; line-height: 30px; font-size: 14px;">${followedUser.username}</a>
                         <div style="clear: both;"></div>
                     </div>
                 `;
@@ -776,12 +928,17 @@ app.get('/search', requireLogin, async (req, res) => {
             filteredPosts.forEach(post => {
                 const linkedContent = linkifyContent(post.content);
                 const postImageHtml = post.imageUrl ? `<img src="${post.imageUrl}" class="post-image" alt="Post Image">` : '';
+                
+                const userLink = post.userId === req.user.id 
+                    ? '/profile' 
+                    : `/user/${post.username}`;
+
 
                 resultsHtml += `
                     <div class="post">
                         <img src="${post.pfpUrl}" class="pfp">
                         <div class="post-header">
-                            <span class="post-user">${post.username}</span> <small>(${post.date})</small>
+                            <a href="${userLink}" class="post-user">${post.username}</a> <small>(${post.date})</small>
                         </div>
                         <div style="clear: both;"></div>
 
@@ -859,11 +1016,11 @@ app.get('/inbox', requireLogin, async (req, res) => {
 
             inboxHtml += `
                 <div class="post">
-                    <p><strong>From: <span class="post-user">${senderUsername}</span></strong> 
+                    <p><strong>From: <a href="/user/${senderUsername}" class="post-user">${senderUsername}</a></strong> 
                     <small>(${latestMsg.date})</small></p>
-                    <p class="post-text">${latestMsg.content.substring(0, 50)}...</p>
+                    <p class="post-text" style="margin-left: 0;">${latestMsg.content.substring(0, 50)}...</p>
                     <p><a href="/compose?recipient=${senderUsername}">Reply</a> 
-                    | <a href="/inbox/view/${senderId}">View Thread</a></p>
+                    | <a href="/inbox/view/${senderId}">View Thread (Not Implemented)</a></p>
                 </div>
             `;
         }
@@ -941,7 +1098,7 @@ app.post('/compose', requireLogin, async (req, res) => {
 });
 
 
-// GET / - Home/Feed Page (Same as previous version)
+// GET / - Home/Feed Page (Same as previous version with user links updated)
 app.get('/', requireLogin, async (req, res) => {
     const error = req.query.error || '';
     const sharePostId = req.query.sharePostId; 
@@ -1023,12 +1180,18 @@ app.get('/', requireLogin, async (req, res) => {
             }
 
             const linkedContent = linkifyContent(post.content);
+            
+            // NEW: Create link to user profile
+            const userLink = post.userId === req.user.id 
+                ? '/profile' 
+                : `/user/${post.username}`;
+
 
             feedContent += `
                 <div class="post">
                     <img src="${postPfpUrl}" class="pfp">
                     <div class="post-header">
-                        <span class="post-user">${post.username}</span> <small>(${post.date})</small>
+                        <a href="${userLink}" class="post-user">${post.username}</a> <small>(${post.date})</small>
                     </div>
                     <div style="clear: both;"></div>
 
@@ -1074,6 +1237,7 @@ app.get('/', requireLogin, async (req, res) => {
     res.send(createHtml('Home', finalContent, error, req.user));
 });
 
+// Fallback to redirect non-logged-in users
 app.get('/', (req, res) => {
     if (req.session.userId) {
         res.redirect('/');
