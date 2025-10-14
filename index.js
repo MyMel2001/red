@@ -1047,7 +1047,7 @@ app.get('/search', requireLogin, async (req, res) => {
             resultsHtml = `<h2>Results for "${query}"</h2><p>No posts found matching your query.</p>`;
         }
     } else {
-        resultsHtml = '<h2>Search Tips</h2><p>Enter a keyword to search by post content or username, or start your query with **#** to search for a specific hashtag (e.g., `#retrogaming`).</p>`;
+        resultsHtml = '<h2>Search Tips</h2><p>Enter a keyword to search by post content or username, or start your query with **#** to search for a specific hashtag (e.g., `#retrogaming`).</p>';
     }
 
     const mainColContent = `
