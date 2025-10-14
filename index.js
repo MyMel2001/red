@@ -166,7 +166,7 @@ async function getUserById(userId) {
 }
 
 
-// Basic, IE5-compatible CSS for layout and style (Same as previous version)
+// Basic, IE5-compatible CSS for layout and style
 const IE5_STYLES = `
     body { 
         font-family: Arial, sans-serif; 
@@ -215,20 +215,20 @@ const IE5_STYLES = `
     }
     .nav-col {
         float: left; 
-        width: 18%; /* Adjusted for box model and content */
+        width: 18%; /* Keeps the width for proportion */
         min-height: 400px;
         font-size: 14px;
-        /* Custom Styles for White Background and Left Alignment */
+        /* CORRECT STYLES for White Box: */
         background-color: #ffffff; 
-        padding: 15px; /* Added padding to match .box style */
-        margin-right: 20px; /* Added margin to separate from main-col */
-        box-sizing: border-box; /* Include padding in width */
-        border: 1px solid #ccc; /* Added border to match .box style */
+        padding: 15px; /* Padding inside the white box */
+        margin-right: 20px; /* Space between nav-col and main-col */
+        box-sizing: border-box; /* Include padding/border in width */
+        border: 1px solid #ccc; /* Add border for distinct box look */
         text-align: left; /* Ensure content is left-aligned */
     }
     .main-col {
         float: left; 
-        width: 48%; /* Adjusted to leave more room for the nav and side columns */
+        width: 48%; /* Adjusted to leave room for the nav and side columns */
         padding: 0 10px;
         min-height: 400px;
         box-sizing: border-box;
@@ -253,16 +253,28 @@ const IE5_STYLES = `
         padding-bottom: 5px;
         margin-top: 0;
     }
-    .nav-col h2, .nav-col p {
+    /* FIX: Corrected internal nav styles to ensure links and headers are visually contained */
+    .nav-col h2 {
+        color: #0077cc;
+        margin: 15px 0 5px 0; /* Add margin above to separate sections */
+        font-weight: bold;
+        border-bottom: 1px solid #cceeff; /* Lighter border for inner separators */
+        padding-bottom: 3px;
+        font-size: 16px;
+    }
+    .nav-col h2:first-child {
+        margin-top: 0;
+    }
+    .nav-col p {
         color: #0077cc;
         margin: 5px 0;
-        font-weight: bold;
     }
     .nav-col a {
         color: #0077cc;
         text-decoration: none;
         display: block;
         padding: 2px 0;
+        background: none; /* Crucial to prevent background bleed */
     }
     .post {
         border-bottom: 1px solid #eee; 
