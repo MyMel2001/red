@@ -57,11 +57,12 @@ md.use(markdownItSanitizeHtml, {
  * @param {string} filePath The full path to the file (e.g., /path/to/uploads/pfp-123.jpg)
  */
 async function optimizeImage(filePath) {
-    const absolutePath = path.resolve(filePath);
+    // FIX: Using path.resolve to get the absolute path from the potentially relative filePath
+    const absolutePath = path.resolve(filePath); 
     const extension = path.extname(filePath).toLowerCase();
     
     try {
-        if (extension == "gif") {
+        if (extension == ".gif") {
             // GIF Compression (Optimization) using imagemin-gifsicle
             const files = await imagemin([absolutePath], {
                 plugins: [
@@ -75,17 +76,19 @@ async function optimizeImage(filePath) {
                 await fs.promises.writeFile(absolutePath, files[0].data);
             }
             
-        } else if (extension == 'jpeg' || extension == 'jpg' || extension == 'image/png') {
+        } else if (extension === '.jpeg' || extension === '.jpg' || extension === '.png') {
             // JPEG/PNG Compression/Resizing using sharp
             let sharpInstance = sharp(absolutePath)
                 // Resize to a fixed PFP size (e.g., 200x200) or maximum post size (800px)
-                .resize({ width: 200, height: 200, fit: 'cover', withoutEnlarging: true }); // Using 200x200 for PFP context, or remove for general compression
+                // Using 200x200 for PFP context, or remove for general compression
+                .resize({ width: 200, height: 200, fit: 'cover', withoutEnlarging: true }); 
 
-            // Apply compression quality and format
-            sharpInstance = sharpInstance.toFormat(mimeType.endsWith('jpeg') ? 'jpeg' : 'png', { quality: 72 });
+            // FIX: Determine format and apply quality based on extension.
+            const format = (extension === '.jpeg' || extension === '.jpg') ? 'jpeg' : 'png';
+            sharpInstance = sharpInstance.toFormat(format, { quality: 72 });
 
-            await sharpInstance.toFile(absolutePath); // Overwrites the original file
-
+            // Overwrites the original file
+            await sharpInstance.toFile(absolutePath); 
         }
         // If other file types make it through, they are left uncompressed.
 
@@ -698,21 +701,24 @@ app.post('/post', requireLogin, (req, res) => {
         }
         
         const { content } = req.body;
-        const filePath = req.file ? `/uploads/${req.file.filename}` : null; 
+        // CORRECT PATH: req.file.path is the relative path from the upload directory (e.g., 'uploads/post-123.jpg')
+        const filePath = req.file ? `/${req.file.path}` : null; // Save as /uploads/filename for web access
         
         if (!content || content.trim() === '') {
             if (filePath) {
-                fs.unlink(path.join(__dirname, req.file.path), (unlinkErr) => {
+                // Use req.file.path for cleanup as it's the path relative to the root used by multer
+                fs.unlink(path.join(__dirname, req.file.path), (unlinkErr) => { 
                     if (unlinkErr) console.error('Error cleaning up file:', unlinkErr);
                 });
             }
             return res.redirect('/?error=Post%20content%20cannot%20be%20empty.');
         }
 
-        // IMAGE OPTIMIZATION: NEW (Optimize image before saving to DB)
+        // IMAGE OPTIMIZATION: FIXED (Passing the correct relative path for optimization)
         if (req.file) {
-            const fullPath = path.join(__dirname, req.file.path);
-            await optimizeImage(fullPath);
+            // Multer stores the file at req.file.path (e.g., 'uploads/filename.jpg').
+            // We pass this relative path to optimizeImage, which handles the absolute resolution.
+            await optimizeImage(req.file.path);
         }
 
         const hashtagRegex = /#(\w+)/g;
@@ -757,17 +763,21 @@ app.post('/profile', requireLogin, (req, res) => {
         let updateData = { ...currentData }; 
 
         if (req.file) {
+            // Delete old PFP if it was an uploaded file
             if (updateData.pfpUrl && updateData.pfpUrl.startsWith('/uploads/')) {
-                fs.unlink(path.join(__dirname, updateData.pfpUrl), (unlinkErr) => {
+                // Use the file system path for deletion (e.g., 'uploads/filename.jpg')
+                const filePathForUnlink = updateData.pfpUrl.substring(1); 
+                fs.unlink(path.join(__dirname, filePathForUnlink), (unlinkErr) => {
                     if (unlinkErr) console.error('Error deleting old PFP file:', unlinkErr);
                 });
             }
             
-            // IMAGE OPTIMIZATION: NEW (Optimize PFP before saving to DB)
-            const fullPath = path.join(__dirname, req.file.path);
-            await optimizeImage(fullPath);
+            // IMAGE OPTIMIZATION: FIXED (Passing the correct relative path for optimization)
+            // Multer stores the file at req.file.path (e.g., 'uploads/filename.jpg').
+            await optimizeImage(req.file.path);
 
-            updateData.pfpUrl = `/uploads/${req.file.filename}`;
+            // Store the web-accessible path in the DB (e.g., '/uploads/filename.jpg')
+            updateData.pfpUrl = `/${req.file.path}`;
         }
         
         if (bio !== undefined) {
