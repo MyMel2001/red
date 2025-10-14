@@ -66,20 +66,20 @@ async function optimizeImage(filePath) {
     
     switch (extension) {
         case '.gif':
-            // Mid-level lossy compression for GIFs (lossy: 30)
+            // Mid-level lossy compression for GIFs (very lossy: 110)
             plugins.push(imageminGifsicle({ 
                 optimizationLevel: 3, 
-                lossy: 30 
+                lossy: 110 
             }));
             break;
         case '.jpg':
         case '.jpeg':
-            // Lossy JPEG compression (Quality 80)
-            plugins.push(imageminMozjpeg({ quality: 80 }));
+            // Lossy JPEG compression (Quality 42)
+            plugins.push(imageminMozjpeg({ quality: 42 }));
             break;
         case '.png':
-            // Lossy PNG compression (Quality 60-80)
-            plugins.push(imageminPngquant({ quality: [0.6, 0.8] }));
+            // Lossy PNG compression (Quality 30-60)
+            plugins.push(imageminPngquant({ quality: [0.3, 0.6] }));
             break;
         default:
             console.log(`[OPTIMIZER] Skipping unsupported file type: ${extension}`);
