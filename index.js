@@ -1,49 +1,92 @@
 // --- Configuration Loading (Must be first) ---
-// Loads configuration variables from the .env file (requires 'dotenv' package)
 require('dotenv').config();
 
 // --- Dependencies and Setup ---
-
-// Required for Express server
 const express = require('express');
 const app = express();
-// Use PORT from .env, fallback to 3000
 const port = process.env.PORT || 3000; 
 
-// Required for secure password hashing (MANDATORY for security)
+// File Upload Dependencies
+const multer = require('multer');
+const path = require('path');
+const fs = require('fs'); // Node.js File System module
+
+// Security and Session Dependencies
 const bcrypt = require('bcrypt');
 const saltRounds = 10;
-
-// Required for session management (crucial for stateful apps and IE5 compatibility)
 const session = require('express-session');
-
-// Quick.DB (SQLite backend) for simple, file-based persistence
 const qdb = require('quick.db');
-// Use DB_FILEPATH from .env, fallback if needed
 const db = new qdb.QuickDB({ filePath: process.env.DB_FILEPATH || './social_network_db.sqlite' });
+// Set domain to localhost:port for local development
+const domain = process.env.DOMAIN || `localhost:${port}`; 
 
-const domain = process.env.DOMAIN || "localhost"
+// --- Multer Configuration for File Uploads ---
+
+// Ensure the 'uploads' directory exists
+const uploadDir = path.join(__dirname, 'uploads');
+if (!fs.existsSync(uploadDir)) {
+    fs.mkdirSync(uploadDir);
+}
+
+const storage = multer.diskStorage({
+    destination: (req, file, cb) => {
+        cb(null, 'uploads/'); // Files will be stored in the 'uploads/' folder
+    },
+    filename: (req, file, cb) => {
+        // Create a unique filename: fieldname-timestamp.ext
+        const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
+        cb(null, file.fieldname + '-' + uniqueSuffix + path.extname(file.originalname));
+    }
+});
+
+// Configure Multer to accept a single image file named 'postImage'
+const upload = multer({ 
+    storage: storage,
+    limits: { fileSize: 5 * 1024 * 1024 }, // 5MB file size limit
+    fileFilter: (req, file, cb) => {
+        const filetypes = /jpeg|jpg|png|gif/;
+        const mimetype = filetypes.test(file.mimetype);
+        const extname = filetypes.test(path.extname(file.originalname).toLowerCase());
+
+        if (mimetype && extname) {
+            return cb(null, true);
+        }
+        cb(new Error('Only images (jpeg, jpg, png, gif) are allowed.'));
+    }
+}).single('postImage');
 
 // --- Initialization Block to Ensure Schema ---
-// This routine ensures that 'users' is an object and 'posts' is an array,
-// preventing the "not an array" error when using db.push().
 async function initializeDatabase() {
-    // 1. Ensure 'users' is an Object (or Map). 
+    // 1. Ensure 'users' is an Object, and add default pfpUrl
     const users = await db.get('users');
     if (typeof users !== 'object' || Array.isArray(users) || users === null) {
-        console.log('[DB INIT] Fixing "users" structure to be an object ({}).');
         await db.set('users', {});
+    } else {
+        for (const userId in users) {
+            if (!users[userId].pfpUrl) {
+                users[userId].pfpUrl = 'https://i.imgur.com/example_default_pfp.png';
+            }
+        }
+        await db.set('users', users);
     }
     
-    // 2. Ensure 'posts' is an Array (Critical for db.push).
+    // 2. Ensure 'posts' is an Array.
     const posts = await db.get('posts');
     if (!Array.isArray(posts)) {
-        console.log('[DB INIT] Fixing "posts" structure to be an array ([]).');
         await db.set('posts', []);
+    }
+
+    // 3. Ensure 'messages' is an Array for DMs
+    const messages = await db.get('messages');
+    if (!Array.isArray(messages)) {
+        await db.set('messages', []);
     }
 }
 
 // --- Configuration and Middleware ---
+
+// Serve static files (uploaded images) - CRITICAL
+app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
 // Use URL-encoded body parser to handle standard form submissions
 app.use(express.urlencoded({ extended: true }));
@@ -51,31 +94,27 @@ app.use(express.json());
 
 // Set up sessions for state management
 app.use(session({
-    // Use SESSION_SECRET from .env, fallback if needed
     secret: process.env.SESSION_SECRET || 'default-secret-for-social-network', 
     resave: false,
     saveUninitialized: false,
     cookie: { 
-        maxAge: 1000 * 60 * 60 * 24, // 1 day cookie life
-        httpOnly: true, // Prevent client-side script access
-        secure: false, // Must be false for local HTTP development
+        maxAge: 1000 * 60 * 60 * 24, 
+        httpOnly: true, 
+        secure: false,
+        sameSite: 'Lax',
     }
 }));
 
-// Middleware to check if a user is logged in
 function requireLogin(req, res, next) {
     if (req.session.userId) {
         next();
     } else {
-        // Redirect to login page
         res.redirect('/login');
     }
 }
 
-// Middleware to load user data into request object
 async function loadUser(req, res, next) {
     if (req.session.userId) {
-        // Fetch user data from DB using the session ID
         req.user = await db.get(`users.${req.session.userId}`);
     }
     next();
@@ -83,49 +122,103 @@ async function loadUser(req, res, next) {
 
 app.use(loadUser);
 
-// --- IE5 Compatible HTML/CSS Utilities ---
+// --- IE5 Compatible HTML/CSS Utilities (Same as previous version) ---
+
+// Utility to find and count hashtags
+async function getTrendingTopics() {
+    const postsRaw = await db.get('posts');
+    const posts = Array.isArray(postsRaw) ? postsRaw : Object.values(postsRaw || {});
+    
+    const hashtagCounts = {};
+    const hashtagRegex = /#(\w+)/g;
+
+    const recentPosts = Array.from(posts).sort((a, b) => b.timestamp - a.timestamp).slice(0, 100);
+
+    for (const post of recentPosts) {
+        let match;
+        while ((match = hashtagRegex.exec(post.content)) !== null) {
+            const tag = match[1].toLowerCase();
+            hashtagCounts[tag] = (hashtagCounts[tag] || 0) + 1;
+        }
+    }
+
+    return Object.entries(hashtagCounts)
+        .sort(([, countA], [, countB]) => countB - countA)
+        .slice(0, 5)
+        .map(([tag, count]) => ({ tag, count }));
+}
+
+// Utility to linkify hashtags
+function linkifyContent(content) {
+    return content.replace(/#(\w+)/g, (match, tag) => {
+        return `<a href="/search?q=%23${tag}" style="color: #0077cc; text-decoration: none;">${match}</a>`;
+    });
+}
 
 // Basic, IE5-compatible CSS for layout and style
 const IE5_STYLES = `
     body { 
         font-family: Arial, sans-serif; 
-        background-color: #f7f7f7; 
+        background-color: #a4e5ed;
         margin: 0; 
         padding: 0;
     }
     .header {
-        background-color: #dbe9f6; 
-        padding: 20px 0; 
+        background-color: #dbe9f6;
+        padding: 10px 0; 
         margin-bottom: 20px; 
-        text-align: center;
+        text-align: left;
         border-bottom: 1px solid #cceeff;
+        width: 900px;
+        margin: 0 auto;
+        padding-left: 10px;
+        box-sizing: border-box;
     }
     .header h1 { 
         color: #0077cc; 
         margin: 0; 
-        font-size: 24px;
+        font-size: 20px;
+        display: inline;
     }
-    .header p { 
-        color: #666; 
-        font-size: 14px; 
-        margin-top: 5px;
+    .header-right {
+        float: right;
+        font-size: 12px;
+        padding-right: 10px;
+        line-height: 20px;
+    }
+    .header-right a {
+        background-color: #ff8c00;
+        color: white;
+        text-decoration: none;
+        padding: 5px 10px;
+        border: none;
     }
     .container {
-        width: 800px; /* Fixed width is highly reliable for IE5 layout */
+        width: 900px;
         margin: 0 auto; 
-        padding: 10px;
-        overflow: hidden; /* Contains floats */
+        padding: 10px 0;
+        overflow: hidden;
+    }
+    .nav-col {
+        float: left; 
+        width: 15%;
+        padding-right: 10px;
+        min-height: 400px;
+        font-size: 14px;
     }
     .main-col {
         float: left; 
-        width: 65%; 
-        padding-right: 20px;
+        width: 55%;
+        padding: 0 10px;
         min-height: 400px;
+        box-sizing: border-box;
     }
     .side-col {
         float: right; 
-        width: 30%; 
+        width: 30%;
+        padding-left: 10px;
         min-height: 400px;
+        box-sizing: border-box;
     }
     .box {
         background-color: #ffffff; 
@@ -134,11 +227,22 @@ const IE5_STYLES = `
         margin-bottom: 20px;
     }
     h2 {
-        font-size: 18px; 
+        font-size: 16px;
         color: #333; 
         border-bottom: 1px solid #eee; 
         padding-bottom: 5px;
         margin-top: 0;
+    }
+    .nav-col h2, .nav-col p {
+        color: #0077cc;
+        margin: 5px 0;
+        font-weight: bold;
+    }
+    .nav-col a {
+        color: #0077cc;
+        text-decoration: none;
+        display: block;
+        padding: 2px 0;
     }
     .post {
         border-bottom: 1px solid #eee; 
@@ -147,28 +251,51 @@ const IE5_STYLES = `
     .post:last-child {
         border-bottom: none;
     }
+    .post-header {
+        display: inline-block;
+        vertical-align: top;
+        margin-left: 5px;
+    }
+    .pfp {
+        width: 40px;
+        height: 40px;
+        border-radius: 50%;
+        border: 1px solid #ccc;
+        float: left;
+    }
     .post-user { 
         font-weight: bold; 
         color: #0077cc; 
+        font-size: 14px;
     }
     .post-text { 
         margin-top: 5px; 
         font-size: 14px; 
         white-space: pre-wrap;
+        margin-left: 45px;
     }
-    input[type="text"], input[type="password"], textarea {
+    .post-image {
+        max-width: 95%; /* Adjust for margin */
+        height: auto;
+        display: block;
+        margin: 10px 0 10px 45px; /* Offset for PFP */
+        border: 1px solid #eee;
+    }
+    input[type="text"], input[type="password"], textarea, input[type="file"] {
         width: 95%; 
         padding: 5px; 
         margin-bottom: 10px; 
         border: 1px solid #ccc;
+        box-sizing: border-box; /* Necessary for width consistency */
     }
-    input[type="submit"] {
+    input[type="submit"], button {
         background-color: #0077cc; 
         color: white; 
         border: none; 
         padding: 8px 15px; 
         cursor: pointer; 
         font-size: 14px;
+        display: inline-block;
     }
     input[type="submit"]:hover {
         background-color: #005fa3;
@@ -178,9 +305,10 @@ const IE5_STYLES = `
         font-weight: bold;
     }
     .post-actions {
-        display: inline;
+        display: inline-block;
         font-size: 12px;
         color: #666;
+        margin-left: 45px;
     }
     .like-button {
         color: #0077cc;
@@ -190,29 +318,67 @@ const IE5_STYLES = `
         padding: 0;
         text-decoration: underline;
         font-size: 12px;
+        display: inline-block;
+        margin-right: 10px;
     }
     .like-button:hover {
         color: #005fa3;
     }
+    /* IE5/Mobile Dynamic Shim: Modern browsers will stack columns */
+    /* @media only screen and (max-width: 600px) { */
+    .flex-shim .nav-col, .flex-shim .main-col, .flex-shim .side-col {
+        float: none;
+        width: 100%;
+        padding: 0 10px;
+        box-sizing: border-box;
+    }
+    .flex-shim .container {
+        width: 100%;
+    }
+    /* } */
 `;
 
+// Navigation Content HTML fragment
+function navContent() {
+    return `
+        <div class="nav-col">
+            <h2 style="color: #0077cc; font-size: 18px;">Navigation</h2>
+            <a href="/">Home</a>
+            <a href="/profile">Profile</a>
+            <a href="/search">Search</a>
+            <a href="/followers">Following</a>
+            <a href="/followers">Followers</a>
+            
+            <h2 style="margin-top: 15px;">Trending</h2>
+            <h2 style="margin-top: 15px;">Messages</h2>
+            <a href="/inbox">Inbox</a>
+            <a href="/compose">Compose</a>
+        </div>
+    `;
+}
+
 // Generic HTML structure generator
-function createHtml(title, bodyContent, error = '') {
+function createHtml(title, bodyContent, error = '', user = null) {
+    const headerRight = user 
+        ? `<span style="color:#333;">Welcome, ${user.username}</span> <a href="/logout">Logout</a>`
+        : '';
+
     return `
 <!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN" "http://www.w3.org/TR/html4/loose.dtd">
 <html>
 <head>
-    <title>${title}</title>
+    <title>x-erpt - ${title}</title>
     <style type="text/css">
         ${IE5_STYLES}
     </style>
 </head>
 <body>
     <div class="header">
-        <h1>X-erpt</h1>
-        <p>Connecting you with friends.</p>
+        <h1>x-erpt</h1>
+        <div class="header-right">${headerRight}</div>
+        <div style="clear: both;"></div>
     </div>
-    <div class="container">
+    <div class="container flex-shim">
         ${error ? `<div class="box" style="background-color: #ffebeb; border-color: #ffcccc;"><p class="error">${decodeURIComponent(error)}</p></div>` : ''}
         ${bodyContent}
     </div>
@@ -222,8 +388,8 @@ function createHtml(title, bodyContent, error = '') {
     `;
 }
 
-// --- Authentication Logic ---
 
+// --- Authentication Routes (Same as before) ---
 async function hashPassword(password) {
     return await bcrypt.hash(password, saltRounds);
 }
@@ -232,9 +398,6 @@ async function checkPassword(password, hash) {
     return await bcrypt.compare(password, hash);
 }
 
-// --- Routes: Authentication ---
-
-// GET /register
 app.get('/register', (req, res) => {
     if (req.session.userId) return res.redirect('/');
     const content = `
@@ -246,92 +409,79 @@ app.get('/register', (req, res) => {
                     <input type="text" name="username" required>
                     <p>Password (min 6 characters):</p>
                     <input type="password" name="password" required>
-                    <input type="submit" value="Register">
+                    <input type="submit" value="Sign Up">
                 </form>
                 <p>Already have an account? <a href="/login">Login here</a>.</p>
             </div>
         </div>
     `;
-    res.send(createHtml('Register - X-erpt', content, req.query.error));
+    res.send(createHtml('Register', content, req.query.error));
 });
 
-// POST /register
 app.post('/register', async (req, res) => {
     const { username, password } = req.body;
-
     if (!username || !password || username.length < 3 || password.length < 6) {
         return res.redirect('/register?error=Username%20must%20be%203+%20chars%20and%20password%206+%20chars.');
     }
-
     const users = await db.get('users');
     const existingUser = Object.values(users).find(u => u.username.toLowerCase() === username.toLowerCase());
-
     if (existingUser) {
         return res.redirect('/register?error=Username%20already%20taken.');
     }
-
     try {
         const hashedPassword = await hashPassword(password);
         const userId = Date.now().toString();
-
         const newUser = {
             id: userId,
             username: username,
             password: hashedPassword,
-            bio: 'A new user on X-erpt!',
-            joinDate: new Date().toLocaleDateString('en-US')
+            bio: 'A new user on x-erpt!',
+            joinDate: new Date().toLocaleDateString('en-US'),
+            pfpUrl: 'https://i.imgur.com/example_default_pfp.png',
+            followers: [],
+            following: [],
         };
-
         await db.set(`users.${userId}`, newUser);
-
         req.session.userId = userId;
         res.redirect('/');
-
     } catch (e) {
         console.error('Registration error:', e);
         res.redirect('/register?error=An%20internal%20error%20occurred.');
     }
 });
 
-// GET /login
 app.get('/login', (req, res) => {
     if (req.session.userId) return res.redirect('/');
     const content = `
         <div class="main-col" style="float: none; width: 100%; padding-right: 0;">
             <div class="box" style="width: 50%; margin: 40px auto; min-height: 0;">
-                <h2>Login</h2>
+                <h2 style="text-align: center;">Welcome to x-erpt</h2>
+                <p style="text-align: center;">What are you doing?</p>
                 <form action="/login" method="POST">
-                    <p>Username:</p>
-                    <input type="text" name="username" required>
-                    <p>Password:</p>
-                    <input type="password" name="password" required>
-                    <input type="submit" value="Login">
+                    <input type="text" name="username" placeholder="Username" required>
+                    <input type="password" name="password" placeholder="Password" required>
+                    <input type="submit" value="Login" style="width: 48%; margin-right: 2%; float: left;">
+                    <a href="/register" style="width: 48%; float: right; display: block; text-align: center; background-color: #3cb371; color: white; padding: 8px 0; text-decoration: none;">Sign Up</a>
+                    <div style="clear: both;"></div>
                 </form>
-                <p>Don't have an account? <a href="/register">Register here</a>.</p>
             </div>
         </div>
     `;
-    res.send(createHtml('Login - X-erpt', content, req.query.error));
+    res.send(createHtml('Login', content, req.query.error));
 });
 
-// POST /login
 app.post('/login', async (req, res) => {
     const { username, password } = req.body;
-
     if (!username || !password) {
         return res.redirect('/login?error=Please%20enter%20both%20username%20and%20password.');
     }
-
     const users = await db.get('users');
     const userEntry = Object.values(users).find(u => u.username.toLowerCase() === username.toLowerCase());
-
     if (!userEntry) {
         return res.redirect('/login?error=Invalid%20username%20or%20password.');
     }
-
     try {
         const passwordMatch = await checkPassword(password, userEntry.password);
-
         if (passwordMatch) {
             req.session.userId = userEntry.id;
             res.redirect('/');
@@ -344,7 +494,6 @@ app.post('/login', async (req, res) => {
     }
 });
 
-// GET /logout
 app.get('/logout', (req, res) => {
     req.session.destroy(err => {
         if (err) {
@@ -355,92 +504,84 @@ app.get('/logout', (req, res) => {
 });
 
 
-// --- Routes: Functionality ---
+// --- Routes: Functionality (Updated POST /post) ---
 
-// POST /post - Submit a new post
-app.post('/post', requireLogin, async (req, res) => {
-    const { content } = req.body;
-
-    if (!content || content.trim() === '') {
-        return res.redirect('/?error=Post%20content%20cannot%20be%20empty.');
-    }
-
-    const newPost = {
-        id: Date.now().toString(),
-        userId: req.user.id,
-        username: req.user.username,
-        content: content.substring(0, 280), // Simple character limit
-        timestamp: Date.now(),
-        date: new Date().toLocaleString('en-US'),
-        likes: 0, // Initialize likes count
-        likedBy: [], // Initialize list of users who liked it
-    };
-
-    await db.push('posts', newPost);
-
-    res.redirect('/');
-});
-
-
-// POST /like - Toggle Like/Unlike on a Post
-app.post('/like', requireLogin, async (req, res) => {
-    const { postId } = req.body;
-    const userId = req.user.id;
-
-    const postsRaw = await db.get('posts');
-    const posts = Array.isArray(postsRaw) ? postsRaw : Object.values(postsRaw || {});
-    
-    const postIndex = posts.findIndex(p => p.id === postId);
-
-    if (postIndex !== -1) {
-        const post = posts[postIndex];
-        if (!Array.isArray(post.likedBy)) post.likedBy = [];
-
-        const likedIndex = post.likedBy.indexOf(userId);
-
-        if (likedIndex === -1) {
-            post.likes = (post.likes || 0) + 1;
-            post.likedBy.push(userId);
-        } else {
-            post.likes = (post.likes || 1) - 1; 
-            post.likedBy.splice(likedIndex, 1);
+// POST /post - Submit a new post (NOW HANDLES FILE UPLOAD)
+app.post('/post', requireLogin, (req, res) => {
+    // Wrap the core logic in the upload middleware
+    upload(req, res, async (err) => {
+        if (err instanceof multer.MulterError) {
+            // A Multer error occurred (e.g., file size limit)
+            return res.redirect(`/?error=${encodeURIComponent('File upload error: ' + err.message)}`);
+        } else if (err) {
+            // An unknown error occurred
+            return res.redirect(`/?error=${encodeURIComponent('Upload failed: ' + err.message)}`);
         }
         
-        if (post.likes < 0) post.likes = 0; 
-        posts[postIndex] = post;
+        // No file error, proceed with post creation
+        const { content } = req.body;
+        const filePath = req.file ? `/uploads/${req.file.filename}` : null; // Get the file path
+        
+        if (!content || content.trim() === '') {
+            // If no content, but file was uploaded, clean up the file
+            if (filePath) {
+                fs.unlink(path.join(__dirname, req.file.path), (unlinkErr) => {
+                    if (unlinkErr) console.error('Error cleaning up file:', unlinkErr);
+                });
+            }
+            return res.redirect('/?error=Post%20content%20cannot%20be%20empty.');
+        }
 
-        await db.set('posts', posts); 
-    }
+        // Extract hashtags (simple extraction for trending)
+        const hashtagRegex = /#(\w+)/g;
+        const hashtags = [];
+        let match;
+        while ((match = hashtagRegex.exec(content)) !== null) {
+            hashtags.push(match[1].toLowerCase());
+        }
 
-    // Redirect back to the page the user came from (or default to home)
-    res.redirect(req.headers.referer || '/');
+        const newPost = {
+            id: Date.now().toString(),
+            userId: req.user.id,
+            username: req.user.username,
+            pfpUrl: req.user.pfpUrl, 
+            content: content.substring(0, 280),
+            imageUrl: filePath, // Stored path to the uploaded image
+            hashtags: hashtags,
+            timestamp: Date.now(),
+            date: new Date().toLocaleString('en-US'),
+            likes: 0,
+            likedBy: [],
+        };
+
+        await db.push('posts', newPost);
+        res.redirect('/');
+    });
 });
 
-/**
- * NEW: POST /share now triggers a redirect to the home page, passing the post ID
- * so the share link can be rendered below the post.
- */
-app.post('/share', requireLogin, (req, res) => {
-    const { postId } = req.body;
-    
-    // Redirect to home page with the postId set as a query parameter
-    res.redirect(`/?sharePostId=${postId}`);
-});
 
-// POST /profile - Update user profile (bio/password)
+// POST /profile - Update user profile (bio/password/pfpUrl)
 app.post('/profile', requireLogin, async (req, res) => {
-    const { bio, newPassword } = req.body;
+    const { bio, newPassword, pfpUrl } = req.body;
     let error = '';
 
     const currentData = await db.get(`users.${req.user.id}`);
     let updateData = { ...currentData }; 
 
-    // 1. Update Bio
     if (bio !== undefined) {
         updateData.bio = bio.substring(0, 150);
     }
     
-    // 2. Update Password (if provided and valid)
+    // PFP URL Update (Simple text input, not file upload)
+    if (pfpUrl !== undefined) {
+        // Simple validation
+        if (pfpUrl.startsWith('http') || pfpUrl === '') {
+            updateData.pfpUrl = pfpUrl || 'https://i.imgur.com/example_default_pfp.png';
+        } else {
+             error = 'PFP URL must start with http/https or be left blank.';
+        }
+    }
+
     if (newPassword && newPassword.length >= 6) {
         try {
             updateData.password = await hashPassword(newPassword);
@@ -454,208 +595,249 @@ app.post('/profile', requireLogin, async (req, res) => {
 
     await db.set(`users.${req.user.id}`, updateData);
     
-    res.redirect(`/?error=${encodeURIComponent(error || 'Profile%20Updated!')}`);
+    res.redirect(`/profile?error=${encodeURIComponent(error || 'Profile%20Updated!')}`);
 });
 
-
-// GET /search - Handle user and post searching
-app.get('/search', requireLogin, async (req, res) => {
-    const query = req.query.q || '';
+// GET /profile - View and edit profile (Same as before)
+app.get('/profile', requireLogin, async (req, res) => {
     const error = req.query.error || '';
+    const user = req.user;
 
-    let resultsHtml = '';
-    const lowerQuery = query.toLowerCase();
-
-    if (query.trim() === '') {
-        resultsHtml += '<p>Please enter a search query above.</p>';
-    } else {
-
-        // 1. Search Users
-        const users = await db.get('users');
-        const userResults = Object.values(users).filter(u => 
-            u.username.toLowerCase().includes(lowerQuery) || 
-            u.bio.toLowerCase().includes(lowerQuery)
-        );
-
-        resultsHtml += '<h3>Users:</h3>';
-        if (userResults.length > 0) {
-            userResults.forEach(user => {
-                resultsHtml += `<div class="post">
-                    <p><span class="post-user">${user.username}</span> <small>(Joined: ${user.joinDate})</small></p>
-                    <p class="post-text">Bio: ${user.bio}</p>
-                </div>`;
-            });
-        } else {
-            resultsHtml += '<p>No users found matching query.</p>';
-        }
-
-        // 2. Search Posts
-        const postsRaw = await db.get('posts');
-        const posts = Array.isArray(postsRaw) ? postsRaw : Object.values(postsRaw || {});
-
-        const postResults = Array.from(posts).filter(p => 
-            p.content.toLowerCase().includes(lowerQuery) || 
-            p.username.toLowerCase().includes(lowerQuery)
-        )
-        .sort((a, b) => b.timestamp - a.timestamp); // Sort by newest first
-
-        resultsHtml += '<h3>Posts:</h3>';
-        if (postResults.length > 0) {
-            postResults.forEach(post => {
-                const likeCount = post.likes || 0;
-                const hasLiked = post.likedBy && post.likedBy.includes(req.user.id);
-                const likeAction = hasLiked ? 'Unlike' : 'Like';
-
-                resultsHtml += `<div class="post">
-                    <p><span class="post-user">${post.username}</span> <small>(${post.date})</small></p>
-                    <p class="post-text">${post.content}</p>
-                    
-                    <div class="post-actions">
-                        <!-- Like/Unlike Button -->
-                        <form action="/like" method="POST" style="display: inline; margin-right: 10px;">
-                            <input type="hidden" name="postId" value="${post.id}">
-                            <input type="submit" class="like-button" value="${likeAction} (${likeCount})">
-                        </form>
-
-                        <!-- Share Button -->
-                        <form action="/share" method="POST" style="display: inline;">
-                            <input type="hidden" name="postId" value="${post.id}">
-                            <input type="submit" class="like-button" value="Share">
-                        </form>
-                    </div>
-
-                </div>`;
-            });
-        } else {
-            resultsHtml += '<p>No posts found matching query.</p>';
-        }
-    }
-
-    // Build the search page content
-    const content = `
-        <div class="main-col">
+    const mainColContent = `
+        <div class="main-col" style="float: none; width: 100%; padding: 0;">
             <div class="box">
-                <h2>Search Users / Posts</h2>
-                <form action="/search" method="GET">
-                    <input type="text" name="q" placeholder="Type username or post..." value="${query}">
-                    <input type="submit" value="Search">
+                <h2>${user.username}'s Profile</h2>
+                <img src="${user.pfpUrl}" class="pfp" style="margin-right: 10px;">
+                <p style="margin-left: 55px; margin-top: 0; font-size: 14px;">
+                    <strong>Bio:</strong> ${user.bio}<br>
+                    <strong>Joined:</strong> ${user.joinDate}<br>
+                    <strong>Followers:</strong> ${(user.followers || []).length}<br>
+                    <strong>Following:</strong> ${(user.following || []).length}
+                </p>
+                <div style="clear: both;"></div>
+
+                <h2 style="margin-top: 20px;">Update Profile</h2>
+                <form action="/profile" method="POST">
+                    <p>Profile Picture URL:</p>
+                    <input type="text" name="pfpUrl" value="${user.pfpUrl || ''}" placeholder="URL starting with http:// or https://">
+                    
+                    <p>Bio (max 150 chars):</p>
+                    <textarea name="bio" rows="4">${user.bio || ''}</textarea>
+                    
+                    <p>New Password:</p>
+                    <input type="password" name="newPassword" placeholder="Leave blank to keep current">
+                    
+                    <input type="submit" value="Update Profile">
                 </form>
             </div>
-            <div class="box">
-                ${resultsHtml}
-            </div>
+        </div>
+    `;
+
+    const finalContent = `
+        ${navContent()}
+        <div class="main-col">
+            ${mainColContent}
         </div>
         <div class="side-col">
             <div class="box">
-                <p>You are logged in as: <span class="post-user">${req.user.username}</span></p>
+                <p>Welcome, ${req.user.username}</p>
                 <p><a href="/">Back to Home Feed</a></p>
                 <p><a href="/logout">Logout</a></p>
             </div>
         </div>
-        <div style="clear: both;"></div>
     `;
 
-    res.send(createHtml('Search - X-erpt', content, error));
+    res.send(createHtml('Profile', finalContent, error, req.user));
 });
 
 
-/**
- * NEW: GET /post/:id route for individual post viewing (used by the share link)
- */
-app.get('/post/:id', async (req, res) => {
-    const postId = req.params.id;
+// --- Direct Messages (DM) Routes (Same as before) ---
 
-    const postsRaw = await db.get('posts');
-    const posts = Array.isArray(postsRaw) ? postsRaw : Object.values(postsRaw || {});
-    
-    const post = posts.find(p => p.id === postId);
+// GET /inbox - View list of DMs
+app.get('/inbox', requireLogin, async (req, res) => {
+    const userId = req.user.id;
+    const messagesRaw = await db.get('messages');
+    const allMessages = Array.isArray(messagesRaw) ? messagesRaw : [];
 
-    if (post) {
-        const content = `
-            <div class="main-col" style="float: none; width: 100%; padding-right: 0;">
-                <div class="box" style="width: 70%; margin: 20px auto; min-height: 0;">
-                    <h2>Post Detail View</h2>
-                    <div class="post" style="border-bottom: none;">
-                        <p><span class="post-user">${post.username}</span> <small>(${post.date})</small></p>
-                        <p class="post-text" style="font-size: 16px; border: 1px solid #eee; padding: 10px;">${post.content}</p>
-                        <p><small>Likes: ${post.likes || 0}</small></p>
-                    </div>
-                    <p><a href="/">Go back to the feed</a></p>
-                </div>
-            </div>
-        `;
-        res.send(createHtml(`Post #${postId} - X-erpt`, content));
-    } else {
-        const content = `<div class="box"><h2>404 Error</h2><p>Post not found.</p><p><a href="/">Go back to the feed</a></p></div>`;
-        res.send(createHtml('Not Found', content));
+    const receivedMessages = allMessages.filter(m => m.recipientId === userId)
+        .sort((a, b) => b.timestamp - a.timestamp);
+
+    const threads = {};
+    for (const msg of receivedMessages) {
+        if (!threads[msg.senderUsername]) {
+            threads[msg.senderUsername] = [];
+        }
+        threads[msg.senderUsername].push(msg);
     }
+    
+    let inboxHtml = '';
+    const users = await db.get('users');
+
+    if (Object.keys(threads).length === 0) {
+        inboxHtml = '<p>Your inbox is empty.</p>';
+    } else {
+        inboxHtml += '<h2>Message Threads</h2>';
+        for (const senderUsername in threads) {
+            const latestMsg = threads[senderUsername][0];
+            const senderUser = Object.values(users).find(u => u.username === senderUsername);
+            const senderId = senderUser ? senderUser.id : 'unknown';
+
+            inboxHtml += `
+                <div class="post">
+                    <p><strong>From: <span class="post-user">${senderUsername}</span></strong> 
+                    <small>(${latestMsg.date})</small></p>
+                    <p class="post-text">${latestMsg.content.substring(0, 50)}...</p>
+                    <p><a href="/compose?recipient=${senderUsername}">Reply</a> 
+                    | <a href="/inbox/view/${senderId}">View Thread</a></p>
+                </div>
+            `;
+        }
+    }
+
+    const mainColContent = `<div class="main-col"><div class="box">${inboxHtml}</div></div>`;
+
+    const finalContent = `
+        ${navContent()}
+        ${mainColContent}
+        <div class="side-col"><div class="box"><p><a href="/compose">Compose New Message</a></p></div></div>
+    `;
+    res.send(createHtml('Inbox', finalContent, req.query.error, req.user));
+});
+
+// GET /compose/:recipient? - Compose a new DM
+app.get('/compose/:recipient?', requireLogin, async (req, res) => {
+    const recipient = req.params.recipient || req.query.recipient || '';
+    const error = req.query.error || '';
+
+    const mainColContent = `
+        <div class="main-col">
+            <div class="box">
+                <h2>Compose Direct Message</h2>
+                <form action="/compose" method="POST">
+                    <p>Recipient Username:</p>
+                    <input type="text" name="recipient" value="${recipient}" required placeholder="Recipient's Username">
+                    <p>Message:</p>
+                    <textarea name="content" rows="6" required placeholder="Your message..."></textarea>
+                    <input type="submit" value="Send Message">
+                </form>
+            </div>
+        </div>
+    `;
+
+    const finalContent = `
+        ${navContent()}
+        ${mainColContent}
+        <div class="side-col"><div class="box"><p><a href="/inbox">Back to Inbox</a></p></div></div>
+    `;
+
+    res.send(createHtml('Compose DM', finalContent, error, req.user));
+});
+
+// POST /compose - Send a DM
+app.post('/compose', requireLogin, async (req, res) => {
+    const { recipient, content } = req.body;
+
+    if (!recipient || !content) {
+        return res.redirect(`/compose?error=${encodeURIComponent('Recipient and content are required.')}`);
+    }
+
+    const users = await db.get('users');
+    const recipientUser = Object.values(users).find(u => u.username.toLowerCase() === recipient.toLowerCase());
+
+    if (!recipientUser) {
+        return res.redirect(`/compose?error=${encodeURIComponent('Recipient user not found.')}`);
+    }
+
+    if (recipientUser.id === req.user.id) {
+        return res.redirect(`/compose?error=${encodeURIComponent('Cannot send message to yourself.')}`);
+    }
+
+    const newMessage = {
+        id: Date.now().toString(),
+        senderId: req.user.id,
+        senderUsername: req.user.username,
+        recipientId: recipientUser.id,
+        recipientUsername: recipientUser.username,
+        content: content.substring(0, 500),
+        timestamp: Date.now(),
+        date: new Date().toLocaleString('en-US'),
+    };
+
+    await db.push('messages', newMessage);
+    
+    res.redirect(`/inbox?error=${encodeURIComponent('Message sent to ' + recipientUser.username + '!')}`);
 });
 
 
-// GET / - Home/Feed Page (Main View)
+// GET / - Home/Feed Page (Main View) - Updated post form
 app.get('/', requireLogin, async (req, res) => {
     const error = req.query.error || '';
-    // NEW: Get the ID of the post to show the share URL for
     const sharePostId = req.query.sharePostId; 
+    
+    // --- Side Column Content (Profile and Trending) ---
+    const trendingTopics = await getTrendingTopics();
+    let trendingHtml = '';
 
-    // --- Side Column Content (Profile and Search) ---
+    if (trendingTopics.length > 0) {
+        trendingTopics.forEach(topic => {
+            trendingHtml += `<p style="margin: 5px 0;">
+                <a href="/search?q=%23${topic.tag}">#${topic.tag}</a> 
+                <small>(${topic.count})</small>
+            </p>`;
+        });
+    } else {
+        trendingHtml = '<p>No trending topics yet.</p>';
+    }
+
     const sideColContent = `
-        <!-- Your Profile Box -->
         <div class="box">
-            <h2>Your Profile</h2>
-            <form action="/profile" method="POST">
-                <p style="font-size: 16px;"><span class="post-user">${req.user.username}</span></p>
-                
-                <p>Bio:</p>
-                <!-- Bio input -->
-                <textarea name="bio" rows="4">${req.user.bio || ''}</textarea>
-                
-                <p>New Password:</p>
-                <input type="password" name="newPassword" placeholder="Leave blank to keep current">
-                
-                <input type="submit" value="Update Profile">
-            </form>
+            <img src="${req.user.pfpUrl}" class="pfp">
+            <h2 style="margin-left: 45px; margin-top: 5px; border-bottom: none;">${req.user.username}</h2>
+            <div style="clear: both;"></div>
+            <p style="font-size: 14px; margin-top: 10px;">
+                Followers: ${(req.user.followers || []).length} | Following: ${(req.user.following || []).length}
+            </p>
+            <p><a href="/profile">Edit Profile</a></p>
         </div>
 
-        <!-- Search Users / Posts Box -->
         <div class="box">
-            <h2>Search Users / Posts</h2>
-            <form action="/search" method="GET">
-                <input type="text" name="q" placeholder="Type username or post..." required>
-                <input type="submit" value="Search">
-            </form>
+            <h2>Trending Topics</h2>
+            ${trendingHtml}
         </div>
     `;
+
+    // --- Navigation Column ---
+    let navHtml = navContent();
+    navHtml = navHtml.replace('', trendingHtml);
 
 
     // --- Main Column Content (Posting and Feed) ---
     
-    // 1. Post Update Form (Posting functionality)
+    // 1. Post Update Form (UPDATED FOR FILE INPUT)
     const postForm = `
         <div class="box">
-            <h2>What's happening with your friends?</h2>
-            <div style="background-color: #f0f8ff; border: 1px solid #cceeff; padding: 10px; margin-bottom: 10px;">
-                <p style="font-weight: bold; margin-top: 0;">"What are you up to?"</p>
-                <p style="font-size: 12px; margin-bottom: 0;">Friends share quick updates and stay connected.</p>
-            </div>
+            <p style="font-weight: bold; margin-top: 0;">What are you doing?</p>
             
-            <h2>Post an update</h2>
-            <form action="/post" method="POST">
-                <p>Share something (max 280 chars):</p>
-                <textarea name="content" rows="4" placeholder="Share something..." required></textarea>
-                <input type="submit" value="Post">
+            <form action="/post" method="POST" enctype="multipart/form-data">
+                <textarea name="content" rows="4" placeholder="Share something (max 280 chars)..." required style="width: 100%; border: 1px solid #ccc;"></textarea>
+                
+                <p style="margin-bottom: 5px; margin-top: 5px;">Attach Image (Optional, max 5MB):</p>
+                <input type="file" name="postImage" accept="image/jpeg,image/png,image/gif" style="width: 100%; padding: 0; margin-bottom: 5px; border: none;">
+
+                <div style="margin-top: 10px; padding-top: 5px; border-top: 1px solid #eee;">
+                    <input type="submit" value="Update" style="float: right;">
+                    <div style="clear: both;"></div>
+                </div>
             </form>
         </div>
     `;
 
-    // 2. Recent Updates Feed (Post viewing functionality)
-    let feedContent = '<h2>Recent Updates</h2>';
+    // 2. Recent Updates Feed
+    let feedContent = '<h2>Your Feed</h2>';
     
     const postsRaw = await db.get('posts');
     const posts = Array.isArray(postsRaw) ? postsRaw : Object.values(postsRaw || {});
 
-
-    // Sort posts to show newest first.
     const recentPosts = Array.from(posts)
         .sort((a, b) => b.timestamp - a.timestamp)
         .slice(0, 50); 
@@ -666,34 +848,42 @@ app.get('/', requireLogin, async (req, res) => {
             const hasLiked = post.likedBy && post.likedBy.includes(req.user.id);
             const likeAction = hasLiked ? 'Unlike' : 'Like';
 
-            // Logic to display the share URL box if the ID matches the query param
+            const postPfpUrl = post.pfpUrl || 'https://i.imgur.com/example_default_pfp.png';
+            // Image URL now uses the server's path
+            const postImageHtml = post.imageUrl ? `<img src="${post.imageUrl}" class="post-image" alt="Post Image">` : '';
+
             let shareUrlBox = '';
             if (sharePostId && post.id === sharePostId) {
-                const fullShareUrl = `http://${domain}/post/${post.id}`; // Generate the shareable URL
+                const fullShareUrl = `http://${domain}/post/${post.id}`;
                 shareUrlBox = `
                     <div style="margin-top: 10px; padding: 8px; border: 1px dashed #0077cc; background-color: #e6f7ff;">
                         <p style="margin: 0; font-size: 12px; color: #333; font-weight: bold;">
                             Share link: <a href="${fullShareUrl}" target="_blank" style="color: #0077cc; text-decoration: underline;">${fullShareUrl}</a>
                         </p>
-                        <!-- Close Button: Simple link redirecting to /, clearing the sharePostId parameter -->
                         <p style="margin: 5px 0 0 0;"><a href="/" style="font-size: 10px; color: #666; font-weight: bold;">[ CLOSE ]</a></p>
                     </div>
                 `;
             }
 
+            const linkedContent = linkifyContent(post.content);
+
             feedContent += `
                 <div class="post">
-                    <p><span class="post-user">${post.username}</span> <small>(${post.date})</small></p>
-                    <p class="post-text">${post.content}</p>
+                    <img src="${postPfpUrl}" class="pfp">
+                    <div class="post-header">
+                        <span class="post-user">${post.username}</span> <small>(${post.date})</small>
+                    </div>
+                    <div style="clear: both;"></div>
+
+                    ${postImageHtml}
+                    <p class="post-text">${linkedContent}</p>
                     
                     <div class="post-actions">
-                        <!-- Like/Unlike Button (Form submission for IE5 compatibility) -->
                         <form action="/like" method="POST" style="display: inline; margin-right: 10px;">
                             <input type="hidden" name="postId" value="${post.id}">
                             <input type="submit" class="like-button" value="${likeAction} (${likeCount})">
                         </form>
 
-                        <!-- Share Button (Form submission for IE5 compatibility) -->
                         <form action="/share" method="POST" style="display: inline;">
                             <input type="hidden" name="postId" value="${post.id}">
                             <input type="submit" class="like-button" value="Share">
@@ -716,6 +906,7 @@ app.get('/', requireLogin, async (req, res) => {
 
     // Combine into final page
     const finalContent = `
+        ${navHtml}
         <div class="main-col">
             ${mainColContent}
         </div>
@@ -724,28 +915,22 @@ app.get('/', requireLogin, async (req, res) => {
         </div>
     `;
 
-    res.send(createHtml('Home - X-erpt', finalContent, error));
+    res.send(createHtml('Home', finalContent, error, req.user));
 });
 
-
-// Redirect the root path to the login page if not authenticated
 app.get('/', (req, res) => {
     if (req.session.userId) {
-        // User is logged in, continue to the home route
         res.redirect('/');
     } else {
-        // User is not logged in, redirect to the login route
         res.redirect('/login');
     }
 });
 
 // --- Server Start ---
 
-// Ensure the database initialization completes before starting the Express server.
 initializeDatabase().then(() => {
     app.listen(port, () => {
-        console.log(`[SERVER] X-erpt social network running at http://localhost:${port}`);
-        console.log(`[CONFIG] Session Secret: ${process.env.SESSION_SECRET ? 'Loaded from .env' : 'Using default'}`);
+        console.log(`[SERVER] x-erpt social network running at http://localhost:${port}`);
         console.log('[INFO] Designed for IE5+ compatibility using simple HTML/CSS and server-side rendering.');
     });
 }).catch(e => {
