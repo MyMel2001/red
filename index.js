@@ -274,7 +274,6 @@ const IE5_STYLES = `
         text-decoration: none;
         display: block;
         padding: 2px 0;
-        background: none; /* Crucial to prevent background bleed */
     }
     .post {
         border-bottom: 1px solid #eee; 
