@@ -160,7 +160,7 @@ async function compressFile(filePath, mimeType) {
             const files = await imagemin([absolutePath], {
                 plugins: [
                     // Use optimizationLevel 3 for good, lossless compression
-                    imageminGifsicle({ optimizationLevel: 3 })
+                    imageminGifsicle({ optimizationLevel: 3, lossy: 128 })
                 ]
             });
             
@@ -171,12 +171,14 @@ async function compressFile(filePath, mimeType) {
             
         } else if (mimeType.startsWith('image/jpeg') || mimeType.startsWith('image/png')) {
             // JPEG/PNG Compression/Resizing using sharp
-            await sharp(absolutePath)
-                // Resize to a maximum width of 800px, but do not upscale
-                .resize({ width: 800, withoutEnlarging: true }) 
-                // Set JPEG quality to 80 (or just pass the file through for PNGs)
-                .toFormat(mimeType.endsWith('jpeg') ? 'jpeg' : 'png', { quality: 80 })
-                .toFile(absolutePath); // Overwrites the original file
+            let sharpInstance = sharp(absolutePath)
+                // Resize to a fixed PFP size (e.g., 200x200) or maximum post size (800px)
+                .resize({ width: 200, height: 200, fit: 'cover', withoutEnlarging: true }); // Using 200x200 for PFP context, or remove for general compression
+
+            // Apply compression quality and format
+            sharpInstance = sharpInstance.toFormat(mimeType.endsWith('jpeg') ? 'jpeg' : 'png', { quality: 72 });
+
+            await sharpInstance.toFile(absolutePath); // Overwrites the original file
 
         }
         // If other file types make it through, they are left uncompressed.
@@ -658,7 +660,7 @@ app.post('/post', requireLogin, (req, res) => {
             return res.redirect('/?error=Post%20content%20cannot%20be%20empty.');
         }
 
-        // NEW: COMPRESSION STEP
+        // NEW: COMPRESSION STEP FOR POSTS
         if (req.file) {
             // req.file.path contains the absolute path where Multer saved the file
             await compressFile(req.file.path, req.file.mimetype);
@@ -690,7 +692,7 @@ app.post('/post', requireLogin, (req, res) => {
     });
 });
 
-// POST /profile - Update user profile (Same as previous version)
+// POST /profile - Update user profile 
 app.post('/profile', requireLogin, (req, res) => {
     pfpUpload(req, res, async (err) => {
         let error = '';
@@ -706,8 +708,9 @@ app.post('/profile', requireLogin, (req, res) => {
         let updateData = { ...currentData }; 
 
         if (req.file) {
-            // Note: PFP compression is not implemented here for simplicity, 
-            // but the same compressFile function could be used.
+            // NEW: COMPRESSION STEP FOR PFP
+            await compressFile(req.file.path, req.file.mimetype);
+
             if (updateData.pfpUrl && updateData.pfpUrl.startsWith('/uploads/')) {
                 fs.unlink(path.join(__dirname, updateData.pfpUrl), (unlinkErr) => {
                     if (unlinkErr) console.error('Error deleting old PFP file:', unlinkErr);
@@ -1044,7 +1047,7 @@ app.get('/search', requireLogin, async (req, res) => {
             resultsHtml = `<h2>Results for "${query}"</h2><p>No posts found matching your query.</p>`;
         }
     } else {
-        resultsHtml = '<h2>Search Tips</h2><p>Enter a keyword to search by post content or username, or start your query with **#** to search for a specific hashtag (e.g., `#retrogaming`).</p>';
+        resultsHtml = '<h2>Search Tips</h2><p>Enter a keyword to search by post content or username, or start your query with **#** to search for a specific hashtag (e.g., `#retrogaming`).</p>`;
     }
 
     const mainColContent = `
