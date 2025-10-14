@@ -24,13 +24,13 @@ const domain = process.env.DOMAIN || `localhost:${port}`;
 const MarkdownIt = require('markdown-it'); 
 const markdownItSanitizeHtml = require('@mshibanami-org/markdown-it-sanitize-html'); 
 
-// <-- IMAGE OPTIMIZATION: NEW (Add imagemin dependencies)
+// IMAGE OPTIMIZATION: Dependencies
 const imagemin = require('imagemin');
 const imageminGifsicle = require('imagemin-gifsicle');
 const imageminMozjpeg = require('imagemin-mozjpeg');
 const imageminPngquant = require('imagemin-pngquant');
 
-// Initialize markdown-it and apply the sanitizer plugin
+// Initialize markdown-it and apply the sanitizer plugin (XSS Prevention)
 const md = new MarkdownIt({
     html: true,         // Allows HTML, which the plugin will then sanitize
     breaks: true,       // Convert '\n' in paragraphs into <br> (social media friendly)
@@ -50,7 +50,7 @@ md.use(markdownItSanitizeHtml, {
 });
 
 
-// --- Image Optimization Utility --- // <-- IMAGE OPTIMIZATION: NEW
+// --- Image Optimization Utility --- 
 
 /**
  * Optimizes an uploaded image file in place.
@@ -99,7 +99,7 @@ async function optimizeImage(filePath) {
 }
 
 
-// --- Multer Configuration for File Uploads (No change needed here) ---
+// --- Multer Configuration for File Uploads ---
 
 // Ensure the 'uploads' directory exists
 const uploadDir = path.join(__dirname, 'uploads');
@@ -144,9 +144,8 @@ const pfpUpload = multer({
 }).single('pfpImage');
 
 
-// --- Initialization Block to Ensure Schema (No change needed) ---
+// --- Initialization Block to Ensure Schema ---
 async function initializeDatabase() {
-// ... (database initialization logic remains the same) ...
     const users = await db.get('users');
     if (typeof users !== 'object' || Array.isArray(users) || users === null) {
         await db.set('users', {});
@@ -181,7 +180,7 @@ async function initializeDatabase() {
     }
 }
 
-// --- Configuration and Middleware (No change needed) ---
+// --- Configuration and Middleware ---
 
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 app.use(express.urlencoded({ extended: true }));
@@ -216,10 +215,9 @@ async function loadUser(req, res, next) {
 
 app.use(loadUser);
 
-// --- IE5 Compatible HTML/CSS Utilities (No change needed) ---
+// --- IE5 Compatible HTML/CSS Utilities ---
 
 async function getTrendingTopics() {
-// ... (getTrendingTopics logic remains the same) ...
     const postsRaw = await db.get('posts');
     const posts = Array.isArray(postsRaw) ? postsRaw : Object.values(postsRaw || {});
     
@@ -229,54 +227,40 @@ async function getTrendingTopics() {
 
     for (const post of recentPosts) {
         let match;
-        // NOTE: Hashtags are extracted from the raw content before saving to post object
-        // but here we just process the content to count them.
         while ((match = hashtagRegex.exec(post.content)) !== null) {
             const tag = match[1].toLowerCase();
             hashtagCounts[tag] = (hashtagCounts[tag] || 0) + 1;
         }
     }
 
-    // This ensures the limit of 5 unique tags and is now the source of truth.
     return Object.entries(hashtagCounts)
         .sort(([, countA], [, countB]) => countB - countA)
         .slice(0, 5)
         .map(([tag, count]) => ({ tag, count }));
 }
 
-// PATCHED: Replaces linkifyContent and now uses markdown-it for sanitization
+// Applies markdown rendering, sanitization, and hashtag linkification
 function renderPostContent(content) {
-// ... (renderPostContent logic remains the same) ...
     // 1. Perform initial Markdown rendering and sanitization using markdown-it
-    // The sanitizer plugin will strip any raw HTML tags found in the content.
     let htmlContent = md.render(content);
 
     // 2. Now linkify the hashtags on the generated HTML content.
-    // This is done after the markdown rendering to ensure we link hashtags 
-    // inside any generated HTML elements (like list items or blockquotes).
     const hashtagRegex = /#(\w+)/g;
     return htmlContent.replace(hashtagRegex, (match, tag) => {
-        // Apply the style to the link to match the original linkifyContent
         return `<a href="/search?q=%23${tag}" style="color: #0077cc; text-decoration: none;">${match}</a>`;
     });
 }
 
-// NEW UTILITY: Get a user object by their username
 async function getUserByUsername(username) {
-// ... (getUserByUsername logic remains the same) ...
     const users = await db.get('users');
     return Object.values(users).find(u => u.username.toLowerCase() === username.toLowerCase());
 }
 
-// NEW UTILITY: Get a user object by their ID
 async function getUserById(userId) {
-// ... (getUserById logic remains the same) ...
     return await db.get(`users.${userId}`);
 }
 
-// NEW UTILITY: Get all posts for a specific user ID
 async function getPostsByUserId(userId) {
-// ... (getPostsByUserId logic remains the same) ...
     const postsRaw = await db.get('posts');
     const allPosts = Array.isArray(postsRaw) ? postsRaw : Object.values(postsRaw || {});
     return allPosts
@@ -284,23 +268,188 @@ async function getPostsByUserId(userId) {
         .sort((a, b) => b.timestamp - a.timestamp);
 }
 
-// NEW UTILITY: Get a single post by ID
 async function getPostById(postId) {
-// ... (getPostById logic remains the same) ...
     const postsRaw = await db.get('posts');
     const allPosts = Array.isArray(postsRaw) ? postsRaw : Object.values(postsRaw || {});
     return allPosts.find(post => post.id === postId);
 }
 
 
-// Basic, IE5-compatible CSS for layout and style
+// Full, self-contained CSS block for retro aesthetic
 const IE5_STYLES = `
-// ... (IE5_STYLES remains the same) ...
+    body {
+        font-family: Arial, Helvetica, sans-serif;
+        font-size: 13px;
+        background-color: #f0f0f0;
+        color: #333;
+        margin: 0;
+        padding: 0;
+    }
+    a {
+        color: #0077cc;
+        text-decoration: underline;
+    }
+    a:hover {
+        color: #ff6600;
+    }
+    input[type="text"], input[type="password"], textarea, input[type="submit"] {
+        font-family: Arial, Helvetica, sans-serif;
+        font-size: 13px;
+        border: 1px solid #999;
+        padding: 3px;
+        margin-bottom: 5px;
+        width: 98%;
+        box-sizing: border-box; /* Crucial for older browser layouts */
+    }
+    textarea {
+        resize: vertical;
+    }
+    input[type="submit"] {
+        cursor: pointer;
+        width: auto;
+        padding: 4px 10px;
+        background-color: #0077cc;
+        color: white;
+        border: 1px solid #0055a4;
+        text-decoration: none;
+    }
+    input[type="submit"]:hover {
+        background-color: #0055a4;
+    }
+    .like-button {
+        background-color: #f0f0f0;
+        color: #333;
+        border: 1px solid #ccc;
+        text-decoration: none;
+        padding: 2px 5px;
+        font-size: 11px;
+    }
+    .like-button:hover {
+        background-color: #ddd;
+    }
+    .header-wrapper {
+        background-color: #e0e0e0;
+        border-bottom: 2px solid #ccc;
+        margin-bottom: 10px;
+    }
+    .header {
+        width: 800px;
+        margin: 0 auto;
+        padding: 10px 0;
+    }
+    .header h1 {
+        font-size: 24px;
+        color: #0077cc;
+        margin: 0;
+        float: left;
+    }
+    .header-right {
+        float: right;
+        margin-top: 5px;
+    }
+    .container {
+        width: 800px;
+        margin: 0 auto;
+    }
+    .flex-shim {
+        /* Faking a flex layout with floats */
+        zoom: 1; /* For IE5/6 */
+    }
+    .nav-col {
+        float: left;
+        width: 150px;
+        padding: 10px;
+        background-color: #fff;
+        border: 1px solid #ccc;
+        margin-right: 10px;
+        margin-bottom: 10px;
+        box-sizing: border-box;
+    }
+    .nav-col a {
+        display: block;
+        margin-bottom: 5px;
+        text-decoration: none;
+        font-weight: bold;
+    }
+    .main-col {
+        float: left;
+        width: 480px;
+        padding-right: 10px;
+        margin-bottom: 10px;
+    }
+    .side-col {
+        float: right;
+        width: 160px;
+        margin-bottom: 10px;
+    }
+    .box {
+        background-color: #fff;
+        border: 1px solid #ccc;
+        padding: 10px;
+        margin-bottom: 10px;
+    }
+    .box h2 {
+        font-size: 16px;
+        border-bottom: 1px solid #ddd;
+        padding-bottom: 5px;
+        margin: 0 0 10px 0;
+    }
+    .post {
+        border: 1px solid #e0e0e0;
+        padding: 8px;
+        margin-bottom: 8px;
+        background-color: #f9f9f9;
+    }
+    .pfp {
+        width: 40px;
+        height: 40px;
+        float: left;
+        margin-right: 5px;
+        border: 1px solid #ccc;
+        background-color: #fff;
+    }
+    .post-header {
+        margin-left: 45px;
+        font-size: 11px;
+    }
+    .post-header p {
+        margin: 0 0 3px 0;
+    }
+    .post-user {
+        font-weight: bold;
+        text-decoration: none;
+        color: #333;
+    }
+    .post-text {
+        margin-top: 5px;
+        padding-left: 45px;
+        line-height: 1.4;
+    }
+    /* Style for markdown-generated elements */
+    .post-text p { margin: 5px 0; }
+    .post-text ul, .post-text ol { margin: 5px 0 5px 20px; padding: 0; }
+    .post-text blockquote { border-left: 3px solid #ccc; padding-left: 8px; color: #666; margin: 5px 0; }
+    
+    .post-actions {
+        margin-top: 5px;
+        padding-left: 45px;
+        font-size: 11px;
+    }
+    .post-image {
+        max-width: 95%; /* Constrain to post container width */
+        height: auto;
+        display: block;
+        margin: 5px 0 5px 45px; /* Indent under the PFP */
+        border: 1px solid #ccc;
+    }
+    .error {
+        color: #cc0000;
+        font-weight: bold;
+    }
 `;
 
 // Navigation Content HTML fragment
 function navContent(trendingHtml = '') {
-// ... (navContent logic remains the same) ...
     let trendingSection = '';
     if (trendingHtml) {
         trendingSection = `
@@ -326,9 +475,8 @@ function navContent(trendingHtml = '') {
     `;
 }
 
-// Generic HTML structure generator (Same as previous version)
+// Generic HTML structure generator
 function createHtml(title, bodyContent, error = '', user = null) {
-// ... (createHtml logic remains the same) ...
     const headerRight = user 
         ? `<span style="color:#333;">Welcome, ${user.username}</span> <a href="/logout">Logout</a>`
         : '';
@@ -360,18 +508,15 @@ function createHtml(title, bodyContent, error = '', user = null) {
     `;
 }
 
-// --- Authentication Routes (Same as previous version) ---
+// --- Authentication Routes ---
 async function hashPassword(password) {
-// ... (hashPassword logic remains the same) ...
     return await bcrypt.hash(password, saltRounds);
 }
 async function checkPassword(password, hash) {
-// ... (checkPassword logic remains the same) ...
     return await bcrypt.compare(password, hash);
 }
 
 app.get('/register', (req, res) => {
-// ... (register GET logic remains the same) ...
     if (req.session.userId) return res.redirect('/');
     const content = `
         <div class="main-col" style="float: none; width: 100%; padding-right: 0;">
@@ -392,7 +537,6 @@ app.get('/register', (req, res) => {
 });
 
 app.post('/register', async (req, res) => {
-// ... (register POST logic remains the same) ...
     const { username, password } = req.body;
     if (!username || !password || username.length < 3 || password.length < 6) {
         return res.redirect('/register?error=Username%20must%20be%203+%20chars%20and%20password%206+%20chars.');
@@ -425,7 +569,6 @@ app.post('/register', async (req, res) => {
 });
 
 app.get('/login', (req, res) => {
-// ... (login GET logic remains the same) ...
     if (req.session.userId) return res.redirect('/');
     const content = `
         <div class="main-col" style="float: none; width: 100%; padding-right: 0;">
@@ -446,7 +589,6 @@ app.get('/login', (req, res) => {
 });
 
 app.post('/login', async (req, res) => {
-// ... (login POST logic remains the same) ...
     const { username, password } = req.body;
     if (!username || !password) {
         return res.redirect('/login?error=Please%20enter%20both%20username%20and%20password.');
@@ -471,7 +613,6 @@ app.post('/login', async (req, res) => {
 });
 
 app.get('/logout', (req, res) => {
-// ... (logout logic remains the same) ...
     req.session.destroy(err => {
         if (err) {
             console.error('Logout error:', err);
@@ -504,7 +645,7 @@ app.post('/post', requireLogin, (req, res) => {
             return res.redirect('/?error=Post%20content%20cannot%20be%20empty.');
         }
 
-        // <-- IMAGE OPTIMIZATION: NEW (Optimize image before saving to DB)
+        // IMAGE OPTIMIZATION: NEW (Optimize image before saving to DB)
         if (req.file) {
             const fullPath = path.join(__dirname, req.file.path);
             await optimizeImage(fullPath);
@@ -558,7 +699,7 @@ app.post('/profile', requireLogin, (req, res) => {
                 });
             }
             
-            // <-- IMAGE OPTIMIZATION: NEW (Optimize PFP before saving to DB)
+            // IMAGE OPTIMIZATION: NEW (Optimize PFP before saving to DB)
             const fullPath = path.join(__dirname, req.file.path);
             await optimizeImage(fullPath);
 
@@ -585,11 +726,9 @@ app.post('/profile', requireLogin, (req, res) => {
         res.redirect(`/profile?error=${encodeURIComponent(error || 'Profile%20Updated!')}`);
     });
 });
-// ... (Rest of the file remains the same) ...
 
 // GET /profile - View and edit profile 
 app.get('/profile', requireLogin, async (req, res) => {
-// ... (profile GET logic remains the same) ...
     const error = req.query.error || '';
     const user = req.user;
 
@@ -624,7 +763,6 @@ app.get('/profile', requireLogin, async (req, res) => {
         </div>
     `;
 
-    // UPDATED: Nav Content called without trending
     const finalContent = `
         ${navContent('')} 
         <div class="main-col">
@@ -645,7 +783,6 @@ app.get('/profile', requireLogin, async (req, res) => {
 
 // NEW ROUTE: GET /user/:username - View another user's profile
 app.get('/user/:username', requireLogin, async (req, res) => {
-// ... (user/:username logic remains the same) ...
     const targetUsername = req.params.username;
     const error = req.query.error || '';
     
@@ -668,12 +805,20 @@ app.get('/user/:username', requireLogin, async (req, res) => {
     let userPostsHtml = '<h3>Recent Posts</h3>';
     if (posts.length > 0) {
         posts.forEach(post => {
-            // PATCHED: Use renderPostContent for sanitization and markdown
+            // Use renderPostContent for sanitization and markdown
             const linkedContent = renderPostContent(post.content); 
             const postImageHtml = post.imageUrl ? `<img src="${post.imageUrl}" class="post-image" alt="Post Image">` : '';
 
             userPostsHtml += `
                 <div class="post">
+                    <div style="float: left; width: 100%;">
+                        <img src="${post.pfpUrl}" class="pfp">
+                        <div class="post-header" style="margin-left: 45px;">
+                            <a href="/user/${post.username}" class="post-user">${post.username}</a> <small>(${post.date})</small>
+                        </div>
+                    </div>
+                    <div style="clear: both;"></div>
+
                     ${postImageHtml}
                     <div class="post-text">${linkedContent}</div>
                     <div class="post-actions" style="margin-left: 0;">
@@ -713,7 +858,6 @@ app.get('/user/:username', requireLogin, async (req, res) => {
         </div>
     `;
 
-    // UPDATED: Nav Content called without trending
     const finalContent = `
         ${navContent('')}
         <div class="main-col">
@@ -733,7 +877,6 @@ app.get('/user/:username', requireLogin, async (req, res) => {
 
 // NEW ROUTE: POST /follow - Handle follow/unfollow action
 app.post('/follow', requireLogin, async (req, res) => {
-// ... (follow POST logic remains the same) ...
     const { targetUserId, action } = req.body;
     const currentUserId = req.user.id;
 
@@ -741,7 +884,7 @@ app.post('/follow', requireLogin, async (req, res) => {
         return res.redirect(`/?error=${encodeURIComponent('Cannot follow/unfollow yourself.')}`);
     }
 
-    const targetUser = await getUserByUsername(targetUserId);
+    const targetUser = await getUserById(targetUserId);
 
     if (!targetUser) {
         return res.redirect(`/?error=${encodeURIComponent('Target user not found.')}`);
@@ -790,7 +933,6 @@ app.post('/follow', requireLogin, async (req, res) => {
 
 // NEW ROUTE: GET /followers - View following/followers lists
 app.get('/followers', requireLogin, async (req, res) => {
-// ... (followers GET logic remains the same) ...
     const error = req.query.error || '';
     const user = req.user;
     const allUsers = await db.get('users');
@@ -828,7 +970,6 @@ app.get('/followers', requireLogin, async (req, res) => {
         </div>
     `;
 
-    // UPDATED: Nav Content called without trending
     const finalContent = `
         ${navContent('')} 
         <div class="main-col">
@@ -847,15 +988,13 @@ app.get('/followers', requireLogin, async (req, res) => {
 
 // NEW ROUTE: GET /search - Search for posts by hashtag or username
 app.get('/search', requireLogin, async (req, res) => {
-// ... (search GET logic remains the same) ...
     const query = req.query.q ? req.query.q.trim() : '';
     const error = req.query.error || '';
     
     let resultsHtml = '';
     let postsRaw = await db.get('posts');
     const allPosts = Array.isArray(postsRaw) ? postsRaw : Object.values(postsRaw || {});
-    const searchResults = [];
-
+    
     if (query) {
         let isHashtag = query.startsWith('#');
         let searchTerm = isHashtag ? query.substring(1).toLowerCase() : query.toLowerCase();
@@ -875,14 +1014,13 @@ app.get('/search', requireLogin, async (req, res) => {
         if (filteredPosts.length > 0) {
             resultsHtml += `<h2>Results for "${query}" (${filteredPosts.length} Posts)</h2>`;
             filteredPosts.forEach(post => {
-                // PATCHED: Use renderPostContent for sanitization and markdown
+                // Use renderPostContent for sanitization and markdown
                 const linkedContent = renderPostContent(post.content);
                 const postImageHtml = post.imageUrl ? `<img src="${post.imageUrl}" class="post-image" alt="Post Image">` : '';
                 
                 const userLink = post.userId === req.user.id 
                     ? '/profile' 
                     : `/user/${post.username}`;
-
 
                 resultsHtml += `
                     <div class="post">
@@ -920,7 +1058,6 @@ app.get('/search', requireLogin, async (req, res) => {
         </div>
     `;
 
-    // UPDATED: Nav Content called without trending
     const finalContent = `
         ${navContent('')}
         ${mainColContent}
@@ -935,9 +1072,8 @@ app.get('/search', requireLogin, async (req, res) => {
 });
 
 
-// POST /like - Handle liking/unliking a post (No change needed)
+// POST /like - Handle liking/unliking a post 
 app.post('/like', requireLogin, async (req, res) => {
-// ... (like POST logic remains the same) ...
     const { postId } = req.body;
     const currentUserId = req.user.id;
     let redirectUrl = req.header('Referer') || '/';
@@ -982,9 +1118,8 @@ app.post('/like', requireLogin, async (req, res) => {
     res.redirect(`${redirectUrl}?error=${encodeURIComponent(message)}`);
 });
 
-// POST /share - Generate share link and redirect to feed (No change needed)
+// POST /share - Generate share link and redirect to feed
 app.post('/share', requireLogin, async (req, res) => {
-// ... (share POST logic remains the same) ...
     const { postId } = req.body;
     
     if (!postId) {
@@ -1001,9 +1136,8 @@ app.post('/share', requireLogin, async (req, res) => {
     res.redirect(`/?sharePostId=${postId}`);
 });
 
-// GET /post/:postId - View a single post (for public sharing) (No change needed)
+// GET /post/:postId - View a single post (for public sharing)
 app.get('/post/:postId', async (req, res) => {
-// ... (post/:postId GET logic remains the same) ...
     const postId = req.params.postId;
     const post = await getPostById(postId);
 
@@ -1011,7 +1145,7 @@ app.get('/post/:postId', async (req, res) => {
         return res.status(404).send(createHtml('Post Not Found', '<div class="main-col"><div class="box"><h2>Error 404</h2><p>The post you are looking for does not exist or has been deleted.</p></div></div>'));
     }
 
-    // PATCHED: Use renderPostContent for sanitization and markdown
+    // Use renderPostContent for sanitization and markdown
     const linkedContent = renderPostContent(post.content);
     const postImageHtml = post.imageUrl ? `<img src="${post.imageUrl}" class="post-image" alt="Post Image" style="margin-left: 0; max-width: 100%;">` : '';
 
@@ -1040,10 +1174,9 @@ app.get('/post/:postId', async (req, res) => {
 });
 
 
-// --- Direct Messages (DM) Routes (Same as previous version) ---
+// --- Direct Messages (DM) Routes ---
 
 app.get('/inbox', requireLogin, async (req, res) => {
-// ... (inbox GET logic remains the same) ...
     const userId = req.user.id;
     const messagesRaw = await db.get('messages');
     const allMessages = Array.isArray(messagesRaw) ? messagesRaw : [];
@@ -1085,7 +1218,6 @@ app.get('/inbox', requireLogin, async (req, res) => {
 
     const mainColContent = `<div class="main-col"><div class="box">${inboxHtml}</div></div>`;
 
-    // UPDATED: Nav Content called without trending
     const finalContent = `
         ${navContent('')}
         ${mainColContent}
@@ -1095,7 +1227,6 @@ app.get('/inbox', requireLogin, async (req, res) => {
 });
 
 app.get('/compose/:recipient?', requireLogin, async (req, res) => {
-// ... (compose GET logic remains the same) ...
     const recipient = req.params.recipient || req.query.recipient || '';
     const error = req.query.error || '';
 
@@ -1114,7 +1245,6 @@ app.get('/compose/:recipient?', requireLogin, async (req, res) => {
         </div>
     `;
 
-    // UPDATED: Nav Content called without trending
     const finalContent = `
         ${navContent('')}
         ${mainColContent}
@@ -1125,7 +1255,6 @@ app.get('/compose/:recipient?', requireLogin, async (req, res) => {
 });
 
 app.post('/compose', requireLogin, async (req, res) => {
-// ... (compose POST logic remains the same) ...
     const { recipient, content } = req.body;
 
     if (!recipient || !content) {
@@ -1161,7 +1290,6 @@ app.post('/compose', requireLogin, async (req, res) => {
 
 // GET / - Home/Feed Page 
 app.get('/', requireLogin, async (req, res) => {
-// ... (home/feed GET logic remains the same) ...
     const error = req.query.error || '';
     const sharePostId = req.query.sharePostId; 
     
@@ -1192,7 +1320,6 @@ app.get('/', requireLogin, async (req, res) => {
         </div>
     `;
 
-    // UPDATED: Nav Content called WITH trending data
     const navHtml = navContent(trendingHtml);
 
 
@@ -1243,10 +1370,10 @@ app.get('/', requireLogin, async (req, res) => {
                 `;
             }
 
-            // PATCHED: Use renderPostContent for sanitization and markdown
+            // Use renderPostContent for sanitization and markdown
             const linkedContent = renderPostContent(post.content);
             
-            // NEW: Create link to user profile
+            // Create link to user profile
             const userLink = post.userId === req.user.id 
                 ? '/profile' 
                 : `/user/${post.username}`;
