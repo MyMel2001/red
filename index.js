@@ -357,7 +357,7 @@ const IE5_STYLES = `
         color: #005fa3;
     }
     /* IE5/Mobile Dynamic Shim */
-    .flex-shim .nav-col, .flex-shim .main-col, .flex-shim .side-col {
+    .flex-shim .flex-shim .main-col, .flex-shim .side-col {
         float: none;
         width: 100%;
         padding: 0 10px;
