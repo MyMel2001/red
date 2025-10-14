@@ -9,7 +9,7 @@ const port = process.env.PORT || 3000;
 // File Upload Dependencies
 const multer = require('multer');
 const path = require('path');
-const fs = require('fs'); // Node.js File System module
+const fs = require('fs'); 
 
 // Security and Session Dependencies
 const bcrypt = require('bcrypt');
@@ -17,7 +17,6 @@ const saltRounds = 10;
 const session = require('express-session');
 const qdb = require('quick.db');
 const db = new qdb.QuickDB({ filePath: process.env.DB_FILEPATH || './social_network_db.sqlite' });
-// Set domain to localhost:port for local development
 const domain = process.env.DOMAIN || `localhost:${port}`; 
 
 // --- Multer Configuration for File Uploads ---
@@ -28,36 +27,45 @@ if (!fs.existsSync(uploadDir)) {
     fs.mkdirSync(uploadDir);
 }
 
+// 1. Storage Configuration
 const storage = multer.diskStorage({
     destination: (req, file, cb) => {
-        cb(null, 'uploads/'); // Files will be stored in the 'uploads/' folder
+        cb(null, 'uploads/');
     },
     filename: (req, file, cb) => {
-        // Create a unique filename: fieldname-timestamp.ext
         const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
         cb(null, file.fieldname + '-' + uniqueSuffix + path.extname(file.originalname));
     }
 });
 
-// Configure Multer to accept a single image file named 'postImage'
-const upload = multer({ 
-    storage: storage,
-    limits: { fileSize: 5 * 1024 * 1024 }, // 5MB file size limit
-    fileFilter: (req, file, cb) => {
-        const filetypes = /jpeg|jpg|png|gif/;
-        const mimetype = filetypes.test(file.mimetype);
-        const extname = filetypes.test(path.extname(file.originalname).toLowerCase());
+const fileFilter = (req, file, cb) => {
+    const filetypes = /jpeg|jpg|png|gif/;
+    const mimetype = filetypes.test(file.mimetype);
+    const extname = filetypes.test(path.extname(file.originalname).toLowerCase());
 
-        if (mimetype && extname) {
-            return cb(null, true);
-        }
-        cb(new Error('Only images (jpeg, jpg, png, gif) are allowed.'));
+    if (mimetype && extname) {
+        return cb(null, true);
     }
+    cb(new Error('Only images (jpeg, jpg, png, gif) are allowed.'));
+};
+
+// 2. Multer Handler for Post Images
+const postUpload = multer({ 
+    storage: storage,
+    limits: { fileSize: 5 * 1024 * 1024 },
+    fileFilter: fileFilter
 }).single('postImage');
+
+// 3. Multer Handler for PFP Uploads
+const pfpUpload = multer({
+    storage: storage,
+    limits: { fileSize: 1 * 1024 * 1024 },
+    fileFilter: fileFilter
+}).single('pfpImage');
+
 
 // --- Initialization Block to Ensure Schema ---
 async function initializeDatabase() {
-    // 1. Ensure 'users' is an Object, and add default pfpUrl
     const users = await db.get('users');
     if (typeof users !== 'object' || Array.isArray(users) || users === null) {
         await db.set('users', {});
@@ -70,13 +78,11 @@ async function initializeDatabase() {
         await db.set('users', users);
     }
     
-    // 2. Ensure 'posts' is an Array.
     const posts = await db.get('posts');
     if (!Array.isArray(posts)) {
         await db.set('posts', []);
     }
 
-    // 3. Ensure 'messages' is an Array for DMs
     const messages = await db.get('messages');
     if (!Array.isArray(messages)) {
         await db.set('messages', []);
@@ -85,14 +91,10 @@ async function initializeDatabase() {
 
 // --- Configuration and Middleware ---
 
-// Serve static files (uploaded images) - CRITICAL
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
-
-// Use URL-encoded body parser to handle standard form submissions
 app.use(express.urlencoded({ extended: true }));
 app.use(express.json());
 
-// Set up sessions for state management
 app.use(session({
     secret: process.env.SESSION_SECRET || 'default-secret-for-social-network', 
     resave: false,
@@ -122,16 +124,14 @@ async function loadUser(req, res, next) {
 
 app.use(loadUser);
 
-// --- IE5 Compatible HTML/CSS Utilities (Same as previous version) ---
+// --- IE5 Compatible HTML/CSS Utilities ---
 
-// Utility to find and count hashtags
 async function getTrendingTopics() {
     const postsRaw = await db.get('posts');
     const posts = Array.isArray(postsRaw) ? postsRaw : Object.values(postsRaw || {});
     
     const hashtagCounts = {};
     const hashtagRegex = /#(\w+)/g;
-
     const recentPosts = Array.from(posts).sort((a, b) => b.timestamp - a.timestamp).slice(0, 100);
 
     for (const post of recentPosts) {
@@ -148,14 +148,25 @@ async function getTrendingTopics() {
         .map(([tag, count]) => ({ tag, count }));
 }
 
-// Utility to linkify hashtags
 function linkifyContent(content) {
     return content.replace(/#(\w+)/g, (match, tag) => {
         return `<a href="/search?q=%23${tag}" style="color: #0077cc; text-decoration: none;">${match}</a>`;
     });
 }
 
-// Basic, IE5-compatible CSS for layout and style
+// NEW UTILITY: Get a user object by their username
+async function getUserByUsername(username) {
+    const users = await db.get('users');
+    return Object.values(users).find(u => u.username.toLowerCase() === username.toLowerCase());
+}
+
+// NEW UTILITY: Get a user object by their ID
+async function getUserById(userId) {
+    return await db.get(`users.${userId}`);
+}
+
+
+// Basic, IE5-compatible CSS for layout and style (Same as previous version)
 const IE5_STYLES = `
     body { 
         font-family: Arial, sans-serif; 
@@ -163,15 +174,18 @@ const IE5_STYLES = `
         margin: 0; 
         padding: 0;
     }
-    .header {
-        background-color: #dbe9f6;
-        padding: 10px 0; 
-        margin-bottom: 20px; 
-        text-align: left;
+    .header-wrapper {
+        background-color: #ffffff;
+        padding: 10px 0;
+        margin-bottom: 20px;
         border-bottom: 1px solid #cceeff;
+    }
+    .header {
+        background-color: #ffffff;
+        padding: 0 10px; 
+        text-align: left;
         width: 900px;
         margin: 0 auto;
-        padding-left: 10px;
         box-sizing: border-box;
     }
     .header h1 { 
@@ -275,10 +289,10 @@ const IE5_STYLES = `
         margin-left: 45px;
     }
     .post-image {
-        max-width: 95%; /* Adjust for margin */
+        max-width: 95%;
         height: auto;
         display: block;
-        margin: 10px 0 10px 45px; /* Offset for PFP */
+        margin: 10px 0 10px 45px;
         border: 1px solid #eee;
     }
     input[type="text"], input[type="password"], textarea, input[type="file"] {
@@ -286,7 +300,7 @@ const IE5_STYLES = `
         padding: 5px; 
         margin-bottom: 10px; 
         border: 1px solid #ccc;
-        box-sizing: border-box; /* Necessary for width consistency */
+        box-sizing: border-box;
     }
     input[type="submit"], button {
         background-color: #0077cc; 
@@ -324,8 +338,7 @@ const IE5_STYLES = `
     .like-button:hover {
         color: #005fa3;
     }
-    /* IE5/Mobile Dynamic Shim: Modern browsers will stack columns */
-    /* @media only screen and (max-width: 600px) { */
+    /* IE5/Mobile Dynamic Shim */
     .flex-shim .nav-col, .flex-shim .main-col, .flex-shim .side-col {
         float: none;
         width: 100%;
@@ -335,10 +348,9 @@ const IE5_STYLES = `
     .flex-shim .container {
         width: 100%;
     }
-    /* } */
 `;
 
-// Navigation Content HTML fragment
+// Navigation Content HTML fragment (Same as previous version)
 function navContent() {
     return `
         <div class="nav-col">
@@ -357,7 +369,7 @@ function navContent() {
     `;
 }
 
-// Generic HTML structure generator
+// Generic HTML structure generator (Same as previous version)
 function createHtml(title, bodyContent, error = '', user = null) {
     const headerRight = user 
         ? `<span style="color:#333;">Welcome, ${user.username}</span> <a href="/logout">Logout</a>`
@@ -373,10 +385,12 @@ function createHtml(title, bodyContent, error = '', user = null) {
     </style>
 </head>
 <body>
-    <div class="header">
-        <h1>x-erpt</h1>
-        <div class="header-right">${headerRight}</div>
-        <div style="clear: both;"></div>
+    <div class="header-wrapper">
+        <div class="header">
+            <h1>x-erpt</h1>
+            <div class="header-right">${headerRight}</div>
+            <div style="clear: both;"></div>
+        </div>
     </div>
     <div class="container flex-shim">
         ${error ? `<div class="box" style="background-color: #ffebeb; border-color: #ffcccc;"><p class="error">${decodeURIComponent(error)}</p></div>` : ''}
@@ -388,12 +402,10 @@ function createHtml(title, bodyContent, error = '', user = null) {
     `;
 }
 
-
-// --- Authentication Routes (Same as before) ---
+// --- Authentication Routes (Same as previous version) ---
 async function hashPassword(password) {
     return await bcrypt.hash(password, saltRounds);
 }
-
 async function checkPassword(password, hash) {
     return await bcrypt.compare(password, hash);
 }
@@ -504,26 +516,21 @@ app.get('/logout', (req, res) => {
 });
 
 
-// --- Routes: Functionality (Updated POST /post) ---
+// --- Routes: Functionality (Posts, Profile, Follow) ---
 
-// POST /post - Submit a new post (NOW HANDLES FILE UPLOAD)
+// POST /post - Submit a new post (Same as previous version)
 app.post('/post', requireLogin, (req, res) => {
-    // Wrap the core logic in the upload middleware
-    upload(req, res, async (err) => {
+    postUpload(req, res, async (err) => {
         if (err instanceof multer.MulterError) {
-            // A Multer error occurred (e.g., file size limit)
             return res.redirect(`/?error=${encodeURIComponent('File upload error: ' + err.message)}`);
         } else if (err) {
-            // An unknown error occurred
             return res.redirect(`/?error=${encodeURIComponent('Upload failed: ' + err.message)}`);
         }
         
-        // No file error, proceed with post creation
         const { content } = req.body;
-        const filePath = req.file ? `/uploads/${req.file.filename}` : null; // Get the file path
+        const filePath = req.file ? `/uploads/${req.file.filename}` : null; 
         
         if (!content || content.trim() === '') {
-            // If no content, but file was uploaded, clean up the file
             if (filePath) {
                 fs.unlink(path.join(__dirname, req.file.path), (unlinkErr) => {
                     if (unlinkErr) console.error('Error cleaning up file:', unlinkErr);
@@ -532,7 +539,6 @@ app.post('/post', requireLogin, (req, res) => {
             return res.redirect('/?error=Post%20content%20cannot%20be%20empty.');
         }
 
-        // Extract hashtags (simple extraction for trending)
         const hashtagRegex = /#(\w+)/g;
         const hashtags = [];
         let match;
@@ -546,7 +552,7 @@ app.post('/post', requireLogin, (req, res) => {
             username: req.user.username,
             pfpUrl: req.user.pfpUrl, 
             content: content.substring(0, 280),
-            imageUrl: filePath, // Stored path to the uploaded image
+            imageUrl: filePath, 
             hashtags: hashtags,
             timestamp: Date.now(),
             date: new Date().toLocaleString('en-US'),
@@ -559,46 +565,52 @@ app.post('/post', requireLogin, (req, res) => {
     });
 });
 
+// POST /profile - Update user profile (Same as previous version)
+app.post('/profile', requireLogin, (req, res) => {
+    pfpUpload(req, res, async (err) => {
+        let error = '';
 
-// POST /profile - Update user profile (bio/password/pfpUrl)
-app.post('/profile', requireLogin, async (req, res) => {
-    const { bio, newPassword, pfpUrl } = req.body;
-    let error = '';
-
-    const currentData = await db.get(`users.${req.user.id}`);
-    let updateData = { ...currentData }; 
-
-    if (bio !== undefined) {
-        updateData.bio = bio.substring(0, 150);
-    }
-    
-    // PFP URL Update (Simple text input, not file upload)
-    if (pfpUrl !== undefined) {
-        // Simple validation
-        if (pfpUrl.startsWith('http') || pfpUrl === '') {
-            updateData.pfpUrl = pfpUrl || 'https://i.imgur.com/example_default_pfp.png';
-        } else {
-             error = 'PFP URL must start with http/https or be left blank.';
+        if (err instanceof multer.MulterError) {
+            error = 'PFP upload error: ' + err.message;
+        } else if (err) {
+            error = 'PFP upload failed: ' + err.message;
         }
-    }
+        
+        const { bio, newPassword } = req.body;
+        const currentData = await db.get(`users.${req.user.id}`);
+        let updateData = { ...currentData }; 
 
-    if (newPassword && newPassword.length >= 6) {
-        try {
-            updateData.password = await hashPassword(newPassword);
-        } catch (e) {
-            console.error('Password hash error:', e);
-            error = 'Error updating password.';
+        if (req.file) {
+            if (updateData.pfpUrl && updateData.pfpUrl.startsWith('/uploads/')) {
+                fs.unlink(path.join(__dirname, updateData.pfpUrl), (unlinkErr) => {
+                    if (unlinkErr) console.error('Error deleting old PFP file:', unlinkErr);
+                });
+            }
+            updateData.pfpUrl = `/uploads/${req.file.filename}`;
         }
-    } else if (newPassword && newPassword.length < 6) {
-        error = 'New password must be at least 6 characters.';
-    }
+        
+        if (bio !== undefined) {
+            updateData.bio = bio.substring(0, 150);
+        }
 
-    await db.set(`users.${req.user.id}`, updateData);
-    
-    res.redirect(`/profile?error=${encodeURIComponent(error || 'Profile%20Updated!')}`);
+        if (newPassword && newPassword.length >= 6) {
+            try {
+                updateData.password = await hashPassword(newPassword);
+            } catch (e) {
+                console.error('Password hash error:', e);
+                error = 'Error updating password.';
+            }
+        } else if (newPassword && newPassword.length < 6) {
+            error = 'New password must be at least 6 characters.';
+        }
+
+        await db.set(`users.${req.user.id}`, updateData);
+        
+        res.redirect(`/profile?error=${encodeURIComponent(error || 'Profile%20Updated!')}`);
+    });
 });
 
-// GET /profile - View and edit profile (Same as before)
+// GET /profile - View and edit profile (Same as previous version)
 app.get('/profile', requireLogin, async (req, res) => {
     const error = req.query.error || '';
     const user = req.user;
@@ -617,9 +629,10 @@ app.get('/profile', requireLogin, async (req, res) => {
                 <div style="clear: both;"></div>
 
                 <h2 style="margin-top: 20px;">Update Profile</h2>
-                <form action="/profile" method="POST">
-                    <p>Profile Picture URL:</p>
-                    <input type="text" name="pfpUrl" value="${user.pfpUrl || ''}" placeholder="URL starting with http:// or https://">
+                
+                <form action="/profile" method="POST" enctype="multipart/form-data">
+                    <p>Change Profile Picture (Max 1MB):</p>
+                    <input type="file" name="pfpImage" accept="image/jpeg,image/png,image/gif" style="width: 100%; padding: 0; margin-bottom: 5px; border: none;">
                     
                     <p>Bio (max 150 chars):</p>
                     <textarea name="bio" rows="4">${user.bio || ''}</textarea>
@@ -651,9 +664,145 @@ app.get('/profile', requireLogin, async (req, res) => {
 });
 
 
-// --- Direct Messages (DM) Routes (Same as before) ---
+// NEW ROUTE: GET /followers - View following/followers lists
+app.get('/followers', requireLogin, async (req, res) => {
+    const error = req.query.error || '';
+    const user = req.user;
+    const allUsers = await db.get('users');
+    
+    // Helper function to build list HTML
+    const buildListHtml = (userIds, title) => {
+        if (!userIds || userIds.length === 0) {
+            return `<div class="box"><h2>${title}</h2><p>None yet.</p></div>`;
+        }
 
-// GET /inbox - View list of DMs
+        let html = `<div class="box"><h2>${title}</h2>`;
+        userIds.forEach(id => {
+            const followedUser = allUsers[id];
+            if (followedUser) {
+                html += `
+                    <div style="padding: 5px 0; border-bottom: 1px dotted #eee;">
+                        <img src="${followedUser.pfpUrl}" class="pfp" style="width: 30px; height: 30px;">
+                        <span class="post-user" style="margin-left: 5px; line-height: 30px;">${followedUser.username}</span>
+                        <div style="clear: both;"></div>
+                    </div>
+                `;
+            }
+        });
+        html += '</div>';
+        return html;
+    };
+
+    const followingList = buildListHtml(user.following, `Following (${(user.following || []).length})`);
+    const followersList = buildListHtml(user.followers, `Followers (${(user.followers || []).length})`);
+
+    const mainColContent = `
+        <div class="main-col" style="float: none; width: 100%; padding: 0;">
+            ${followingList}
+            ${followersList}
+        </div>
+    `;
+
+    const finalContent = `
+        ${navContent()}
+        <div class="main-col">
+            ${mainColContent}
+        </div>
+        <div class="side-col">
+            <div class="box">
+                <p>Use the links to the left to navigate.</p>
+                <p><a href="/profile">Back to Profile</a></p>
+            </div>
+        </div>
+    `;
+
+    res.send(createHtml('Followers', finalContent, error, req.user));
+});
+
+// NEW ROUTE: GET /search - Search for posts by hashtag or username
+app.get('/search', requireLogin, async (req, res) => {
+    const query = req.query.q ? req.query.q.trim() : '';
+    const error = req.query.error || '';
+    
+    let resultsHtml = '';
+    let postsRaw = await db.get('posts');
+    const allPosts = Array.isArray(postsRaw) ? postsRaw : Object.values(postsRaw || {});
+    const searchResults = [];
+
+    if (query) {
+        let isHashtag = query.startsWith('#');
+        let searchTerm = isHashtag ? query.substring(1).toLowerCase() : query.toLowerCase();
+
+        // Filter posts
+        const filteredPosts = allPosts.filter(post => {
+            if (isHashtag) {
+                // Search by hashtag
+                return post.hashtags && post.hashtags.includes(searchTerm);
+            } else {
+                // Search by content or username (simple substring match)
+                return post.content.toLowerCase().includes(searchTerm) || 
+                       post.username.toLowerCase().includes(searchTerm);
+            }
+        }).sort((a, b) => b.timestamp - a.timestamp); // Sort newest first
+
+        if (filteredPosts.length > 0) {
+            resultsHtml += `<h2>Results for "${query}" (${filteredPosts.length} Posts)</h2>`;
+            filteredPosts.forEach(post => {
+                const linkedContent = linkifyContent(post.content);
+                const postImageHtml = post.imageUrl ? `<img src="${post.imageUrl}" class="post-image" alt="Post Image">` : '';
+
+                resultsHtml += `
+                    <div class="post">
+                        <img src="${post.pfpUrl}" class="pfp">
+                        <div class="post-header">
+                            <span class="post-user">${post.username}</span> <small>(${post.date})</small>
+                        </div>
+                        <div style="clear: both;"></div>
+
+                        ${postImageHtml}
+                        <p class="post-text">${linkedContent}</p>
+                    </div>
+                `;
+            });
+        } else {
+            resultsHtml = `<h2>Results for "${query}"</h2><p>No posts found matching your query.</p>`;
+        }
+    } else {
+        resultsHtml = '<h2>Search Tips</h2><p>Enter a keyword to search by post content or username, or start your query with **#** to search for a specific hashtag (e.g., `#retrogaming`).</p>';
+    }
+
+    const mainColContent = `
+        <div class="main-col">
+            <div class="box">
+                <h2>Search x-erpt</h2>
+                <form action="/search" method="GET">
+                    <input type="text" name="q" value="${query}" placeholder="Search username, keyword, or #hashtag" required>
+                    <input type="submit" value="Search">
+                </form>
+            </div>
+            
+            <div class="box">
+                ${resultsHtml}
+            </div>
+        </div>
+    `;
+
+    const finalContent = `
+        ${navContent()}
+        ${mainColContent}
+        <div class="side-col">
+            <div class="box">
+                <p>Search is a powerful tool to find old content!</p>
+            </div>
+        </div>
+    `;
+
+    res.send(createHtml('Search', finalContent, error, req.user));
+});
+
+
+// --- Direct Messages (DM) Routes (Same as previous version) ---
+
 app.get('/inbox', requireLogin, async (req, res) => {
     const userId = req.user.id;
     const messagesRaw = await db.get('messages');
@@ -704,7 +853,6 @@ app.get('/inbox', requireLogin, async (req, res) => {
     res.send(createHtml('Inbox', finalContent, req.query.error, req.user));
 });
 
-// GET /compose/:recipient? - Compose a new DM
 app.get('/compose/:recipient?', requireLogin, async (req, res) => {
     const recipient = req.params.recipient || req.query.recipient || '';
     const error = req.query.error || '';
@@ -733,7 +881,6 @@ app.get('/compose/:recipient?', requireLogin, async (req, res) => {
     res.send(createHtml('Compose DM', finalContent, error, req.user));
 });
 
-// POST /compose - Send a DM
 app.post('/compose', requireLogin, async (req, res) => {
     const { recipient, content } = req.body;
 
@@ -741,8 +888,7 @@ app.post('/compose', requireLogin, async (req, res) => {
         return res.redirect(`/compose?error=${encodeURIComponent('Recipient and content are required.')}`);
     }
 
-    const users = await db.get('users');
-    const recipientUser = Object.values(users).find(u => u.username.toLowerCase() === recipient.toLowerCase());
+    const recipientUser = await getUserByUsername(recipient);
 
     if (!recipientUser) {
         return res.redirect(`/compose?error=${encodeURIComponent('Recipient user not found.')}`);
@@ -769,12 +915,11 @@ app.post('/compose', requireLogin, async (req, res) => {
 });
 
 
-// GET / - Home/Feed Page (Main View) - Updated post form
+// GET / - Home/Feed Page (Same as previous version)
 app.get('/', requireLogin, async (req, res) => {
     const error = req.query.error || '';
     const sharePostId = req.query.sharePostId; 
     
-    // --- Side Column Content (Profile and Trending) ---
     const trendingTopics = await getTrendingTopics();
     let trendingHtml = '';
 
@@ -806,14 +951,10 @@ app.get('/', requireLogin, async (req, res) => {
         </div>
     `;
 
-    // --- Navigation Column ---
     let navHtml = navContent();
     navHtml = navHtml.replace('', trendingHtml);
 
 
-    // --- Main Column Content (Posting and Feed) ---
-    
-    // 1. Post Update Form (UPDATED FOR FILE INPUT)
     const postForm = `
         <div class="box">
             <p style="font-weight: bold; margin-top: 0;">What are you doing?</p>
@@ -832,24 +973,20 @@ app.get('/', requireLogin, async (req, res) => {
         </div>
     `;
 
-    // 2. Recent Updates Feed
     let feedContent = '<h2>Your Feed</h2>';
     
     const postsRaw = await db.get('posts');
-    const posts = Array.isArray(postsRaw) ? postsRaw : Object.values(postsRaw || {});
-
-    const recentPosts = Array.from(posts)
+    const posts = Array.from(Array.isArray(postsRaw) ? postsRaw : Object.values(postsRaw || {}))
         .sort((a, b) => b.timestamp - a.timestamp)
         .slice(0, 50); 
 
-    if (recentPosts.length > 0) {
-        recentPosts.forEach(post => {
+    if (posts.length > 0) {
+        posts.forEach(post => {
             const likeCount = post.likes || 0;
             const hasLiked = post.likedBy && post.likedBy.includes(req.user.id);
             const likeAction = hasLiked ? 'Unlike' : 'Like';
 
             const postPfpUrl = post.pfpUrl || 'https://i.imgur.com/example_default_pfp.png';
-            // Image URL now uses the server's path
             const postImageHtml = post.imageUrl ? `<img src="${post.imageUrl}" class="post-image" alt="Post Image">` : '';
 
             let shareUrlBox = '';
@@ -904,7 +1041,6 @@ app.get('/', requireLogin, async (req, res) => {
         </div>
     `;
 
-    // Combine into final page
     const finalContent = `
         ${navHtml}
         <div class="main-col">
