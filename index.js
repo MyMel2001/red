@@ -228,7 +228,7 @@ const IE5_STYLES = `
     }
     .main-col {
         float: left; 
-        width: 44%; /* Adjusted to leave room for the nav and side columns */
+        width: 64%; /* Adjusted to leave room for the nav and side columns */
         padding: 0 10px;
         padding-left: 20px;
         padding-right: 12px;
