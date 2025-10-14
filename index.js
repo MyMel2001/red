@@ -154,6 +154,7 @@ async function getTrendingTopics() {
         }
     }
 
+    // This ensures the limit of 5 unique tags and is now the source of truth.
     return Object.entries(hashtagCounts)
         .sort(([, countA], [, countB]) => countB - countA)
         .slice(0, 5)
@@ -403,7 +404,16 @@ const IE5_STYLES = `
 `;
 
 // Navigation Content HTML fragment
+// UPDATED: Now conditionally adds the Trending section based on trendingHtml input.
 function navContent(trendingHtml = '') {
+    let trendingSection = '';
+    if (trendingHtml) {
+        trendingSection = `
+            <h2 style="margin-top: 15px;">Trending</h2>
+            ${trendingHtml}
+        `;
+    }
+
     return `
         <div class="nav-col">
             <h2 style="color: #0077cc; font-size: 18px;">Navigation</h2>
@@ -412,8 +422,7 @@ function navContent(trendingHtml = '') {
             <a href="/search">Search</a>
             <a href="/followers">Following/Followers</a>
             
-            <h2 style="margin-top: 15px;">Trending</h2>
-            ${trendingHtml}
+            ${trendingSection}
 
             <h2 style="margin-top: 15px;">Messages</h2>
             <a href="/inbox">Inbox</a>
@@ -663,7 +672,7 @@ app.post('/profile', requireLogin, (req, res) => {
     });
 });
 
-// GET /profile - View and edit profile (Same as previous version)
+// GET /profile - View and edit profile 
 app.get('/profile', requireLogin, async (req, res) => {
     const error = req.query.error || '';
     const user = req.user;
@@ -699,8 +708,9 @@ app.get('/profile', requireLogin, async (req, res) => {
         </div>
     `;
 
+    // UPDATED: Nav Content called without trending
     const finalContent = `
-        ${navContent('')}
+        ${navContent('')} 
         <div class="main-col">
             ${mainColContent}
         </div>
@@ -785,6 +795,7 @@ app.get('/user/:username', requireLogin, async (req, res) => {
         </div>
     `;
 
+    // UPDATED: Nav Content called without trending
     const finalContent = `
         ${navContent('')}
         <div class="main-col">
@@ -897,8 +908,9 @@ app.get('/followers', requireLogin, async (req, res) => {
         </div>
     `;
 
+    // UPDATED: Nav Content called without trending
     const finalContent = `
-        ${navContent('')}
+        ${navContent('')} 
         <div class="main-col">
             ${mainColContent}
         </div>
@@ -986,6 +998,7 @@ app.get('/search', requireLogin, async (req, res) => {
         </div>
     `;
 
+    // UPDATED: Nav Content called without trending
     const finalContent = `
         ${navContent('')}
         ${mainColContent}
@@ -1000,7 +1013,7 @@ app.get('/search', requireLogin, async (req, res) => {
 });
 
 
-// --- NEW ROUTE: POST /like - Handle liking/unliking a post ---
+// POST /like - Handle liking/unliking a post (No change needed)
 app.post('/like', requireLogin, async (req, res) => {
     const { postId } = req.body;
     const currentUserId = req.user.id;
@@ -1046,7 +1059,7 @@ app.post('/like', requireLogin, async (req, res) => {
     res.redirect(`${redirectUrl}?error=${encodeURIComponent(message)}`);
 });
 
-// --- NEW ROUTE: POST /share - Generate share link and redirect to feed ---
+// POST /share - Generate share link and redirect to feed (No change needed)
 app.post('/share', requireLogin, async (req, res) => {
     const { postId } = req.body;
     
@@ -1064,7 +1077,7 @@ app.post('/share', requireLogin, async (req, res) => {
     res.redirect(`/?sharePostId=${postId}`);
 });
 
-// --- NEW ROUTE: GET /post/:postId - View a single post (for public sharing) ---
+// GET /post/:postId - View a single post (for public sharing) (No change needed)
 app.get('/post/:postId', async (req, res) => {
     const postId = req.params.postId;
     const post = await getPostById(postId);
@@ -1145,6 +1158,7 @@ app.get('/inbox', requireLogin, async (req, res) => {
 
     const mainColContent = `<div class="main-col"><div class="box">${inboxHtml}</div></div>`;
 
+    // UPDATED: Nav Content called without trending
     const finalContent = `
         ${navContent('')}
         ${mainColContent}
@@ -1172,6 +1186,7 @@ app.get('/compose/:recipient?', requireLogin, async (req, res) => {
         </div>
     `;
 
+    // UPDATED: Nav Content called without trending
     const finalContent = `
         ${navContent('')}
         ${mainColContent}
@@ -1215,11 +1230,12 @@ app.post('/compose', requireLogin, async (req, res) => {
 });
 
 
-// GET / - Home/Feed Page (Same as previous version with user links updated)
+// GET / - Home/Feed Page 
 app.get('/', requireLogin, async (req, res) => {
     const error = req.query.error || '';
     const sharePostId = req.query.sharePostId; 
     
+    // FETCH TRENDING TOPICS (only for home page)
     const trendingTopics = await getTrendingTopics();
     let trendingHtml = '';
 
@@ -1246,6 +1262,7 @@ app.get('/', requireLogin, async (req, res) => {
         </div>
     `;
 
+    // UPDATED: Nav Content called WITH trending data
     const navHtml = navContent(trendingHtml);
 
 
