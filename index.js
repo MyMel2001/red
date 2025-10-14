@@ -215,14 +215,20 @@ const IE5_STYLES = `
     }
     .nav-col {
         float: left; 
-        width: 15%;
-        padding-right: 10px;
+        width: 18%; /* Adjusted for box model and content */
         min-height: 400px;
         font-size: 14px;
+        /* Custom Styles for White Background and Left Alignment */
+        background-color: #ffffff; 
+        padding: 15px; /* Added padding to match .box style */
+        margin-right: 20px; /* Added margin to separate from main-col */
+        box-sizing: border-box; /* Include padding in width */
+        border: 1px solid #ccc; /* Added border to match .box style */
+        text-align: left; /* Ensure content is left-aligned */
     }
     .main-col {
         float: left; 
-        width: 55%;
+        width: 48%; /* Adjusted to leave more room for the nav and side columns */
         padding: 0 10px;
         min-height: 400px;
         box-sizing: border-box;
@@ -344,14 +350,17 @@ const IE5_STYLES = `
         width: 100%;
         padding: 0 10px;
         box-sizing: border-box;
+        margin-right: 0;
+        border: none;
+        background-color: transparent;
     }
     .flex-shim .container {
         width: 100%;
     }
 `;
 
-// Navigation Content HTML fragment (Same as previous version)
-function navContent() {
+// Navigation Content HTML fragment
+function navContent(trendingHtml = '') {
     return `
         <div class="nav-col">
             <h2 style="color: #0077cc; font-size: 18px;">Navigation</h2>
@@ -362,6 +371,8 @@ function navContent() {
             <a href="/followers">Followers</a>
             
             <h2 style="margin-top: 15px;">Trending</h2>
+            ${trendingHtml}
+
             <h2 style="margin-top: 15px;">Messages</h2>
             <a href="/inbox">Inbox</a>
             <a href="/compose">Compose</a>
@@ -647,7 +658,7 @@ app.get('/profile', requireLogin, async (req, res) => {
     `;
 
     const finalContent = `
-        ${navContent()}
+        ${navContent('')}
         <div class="main-col">
             ${mainColContent}
         </div>
@@ -704,7 +715,7 @@ app.get('/followers', requireLogin, async (req, res) => {
     `;
 
     const finalContent = `
-        ${navContent()}
+        ${navContent('')}
         <div class="main-col">
             ${mainColContent}
         </div>
@@ -788,7 +799,7 @@ app.get('/search', requireLogin, async (req, res) => {
     `;
 
     const finalContent = `
-        ${navContent()}
+        ${navContent('')}
         ${mainColContent}
         <div class="side-col">
             <div class="box">
@@ -846,7 +857,7 @@ app.get('/inbox', requireLogin, async (req, res) => {
     const mainColContent = `<div class="main-col"><div class="box">${inboxHtml}</div></div>`;
 
     const finalContent = `
-        ${navContent()}
+        ${navContent('')}
         ${mainColContent}
         <div class="side-col"><div class="box"><p><a href="/compose">Compose New Message</a></p></div></div>
     `;
@@ -873,7 +884,7 @@ app.get('/compose/:recipient?', requireLogin, async (req, res) => {
     `;
 
     const finalContent = `
-        ${navContent()}
+        ${navContent('')}
         ${mainColContent}
         <div class="side-col"><div class="box"><p><a href="/inbox">Back to Inbox</a></p></div></div>
     `;
@@ -944,15 +955,9 @@ app.get('/', requireLogin, async (req, res) => {
             </p>
             <p><a href="/profile">Edit Profile</a></p>
         </div>
-
-        <div class="box">
-            <h2>Trending Topics</h2>
-            ${trendingHtml}
-        </div>
     `;
 
-    let navHtml = navContent();
-    navHtml = navHtml.replace('', trendingHtml);
+    const navHtml = navContent(trendingHtml);
 
 
     const postForm = `
