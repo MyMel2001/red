@@ -20,6 +20,21 @@ const qdb = require('quick.db');
 const db = new qdb.QuickDB({ filePath: process.env.DB_FILEPATH || './social_network_db.sqlite' });
 const domain = process.env.DOMAIN || `localhost:${port}`; 
 
+// NEW: Markdown Renderer and Sanitizer Dependency
+const { marked } = require('marked'); // <-- ADDED
+
+// Configure Marked for simple markdown conversion and sanitization
+marked.setOptions({
+    renderer: new marked.Renderer(),
+    pedantic: false,
+    gfm: true, // Use Github Flavored Markdown
+    breaks: true, // Add <br> on single line breaks (social media friendly)
+    sanitize: true, // <-- IMPORTANT: Removes all raw HTML tags (XSS protection)
+    smartLists: true,
+    smartypants: false,
+});
+
+
 // --- Multer Configuration for File Uploads ---
 
 // Ensure the 'uploads' directory exists
@@ -148,6 +163,8 @@ async function getTrendingTopics() {
 
     for (const post of recentPosts) {
         let match;
+        // NOTE: Hashtags are extracted from the raw content before saving to post object
+        // but here we just process the content to count them.
         while ((match = hashtagRegex.exec(post.content)) !== null) {
             const tag = match[1].toLowerCase();
             hashtagCounts[tag] = (hashtagCounts[tag] || 0) + 1;
@@ -161,8 +178,21 @@ async function getTrendingTopics() {
         .map(([tag, count]) => ({ tag, count }));
 }
 
-function linkifyContent(content) {
-    return content.replace(/#(\w+)/g, (match, tag) => {
+// PATCHED: Replaces linkifyContent
+function renderPostContent(content) {
+    // 1. Perform initial Markdown rendering and sanitization
+    // This converts markdown to HTML and REMOVES all raw HTML from user input
+    let htmlContent = marked.parse(content);
+
+    // Remove the outer <p> tags marked might add, as it can mess with the style
+    if (htmlContent.startsWith('<p>') && htmlContent.endsWith('</p>\n')) {
+        htmlContent = htmlContent.substring(3, htmlContent.length - 4);
+    }
+
+    // 2. Now linkify the hashtags on the generated HTML content
+    const hashtagRegex = /#(\w+)/g;
+    return htmlContent.replace(hashtagRegex, (match, tag) => {
+        // Apply the style to the link to match the original linkifyContent
         return `<a href="/search?q=%23${tag}" style="color: #0077cc; text-decoration: none;">${match}</a>`;
     });
 }
@@ -335,8 +365,12 @@ const IE5_STYLES = `
     .post-text { 
         margin-top: 5px; 
         font-size: 14px; 
-        white-space: pre-wrap;
+        /* Removed pre-wrap as marked handles formatting */
         margin-left: 45px;
+    }
+    .post-text * { /* Added to ensure markdown output is visible */
+        margin: 0;
+        padding: 0;
     }
     .post-image {
         max-width: 95%;
@@ -751,13 +785,14 @@ app.get('/user/:username', requireLogin, async (req, res) => {
     let userPostsHtml = '<h3>Recent Posts</h3>';
     if (posts.length > 0) {
         posts.forEach(post => {
-            const linkedContent = linkifyContent(post.content);
+            // PATCHED: Use renderPostContent for sanitization and markdown
+            const linkedContent = renderPostContent(post.content); 
             const postImageHtml = post.imageUrl ? `<img src="${post.imageUrl}" class="post-image" alt="Post Image">` : '';
 
             userPostsHtml += `
                 <div class="post">
                     ${postImageHtml}
-                    <p class="post-text">${linkedContent}</p>
+                    <div class="post-text">${linkedContent}</div>
                     <div class="post-actions" style="margin-left: 0;">
                         <small>Posted on ${post.date}</small>
                     </div>
@@ -954,7 +989,8 @@ app.get('/search', requireLogin, async (req, res) => {
         if (filteredPosts.length > 0) {
             resultsHtml += `<h2>Results for "${query}" (${filteredPosts.length} Posts)</h2>`;
             filteredPosts.forEach(post => {
-                const linkedContent = linkifyContent(post.content);
+                // PATCHED: Use renderPostContent for sanitization and markdown
+                const linkedContent = renderPostContent(post.content);
                 const postImageHtml = post.imageUrl ? `<img src="${post.imageUrl}" class="post-image" alt="Post Image">` : '';
                 
                 const userLink = post.userId === req.user.id 
@@ -971,7 +1007,7 @@ app.get('/search', requireLogin, async (req, res) => {
                         <div style="clear: both;"></div>
 
                         ${postImageHtml}
-                        <p class="post-text">${linkedContent}</p>
+                        <div class="post-text">${linkedContent}</div>
                     </div>
                 `;
             });
@@ -1086,7 +1122,8 @@ app.get('/post/:postId', async (req, res) => {
         return res.status(404).send(createHtml('Post Not Found', '<div class="main-col"><div class="box"><h2>Error 404</h2><p>The post you are looking for does not exist or has been deleted.</p></div></div>'));
     }
 
-    const linkedContent = linkifyContent(post.content);
+    // PATCHED: Use renderPostContent for sanitization and markdown
+    const linkedContent = renderPostContent(post.content);
     const postImageHtml = post.imageUrl ? `<img src="${post.imageUrl}" class="post-image" alt="Post Image" style="margin-left: 0; max-width: 100%;">` : '';
 
     const postHtml = `
@@ -1099,7 +1136,7 @@ app.get('/post/:postId', async (req, res) => {
             <div style="clear: both;"></div>
 
             ${postImageHtml}
-            <p class="post-text" style="margin-left: 0;">${linkedContent}</p>
+            <div class="post-text" style="margin-left: 0;">${linkedContent}</div>
 
             <div class="post-actions" style="margin-left: 0; padding-top: 10px; border-top: 1px solid #eee;">
                 <strong>Likes:</strong> ${post.likes || 0}
@@ -1271,7 +1308,7 @@ app.get('/', requireLogin, async (req, res) => {
             <p style="font-weight: bold; margin-top: 0;">What are you doing?</p>
             
             <form action="/post" method="POST" enctype="multipart/form-data">
-                <textarea name="content" rows="4" placeholder="Share something (max ${postCharCount} chars)..." required style="width: 100%; border: 1px solid #ccc;"></textarea>
+                <textarea name="content" rows="4" placeholder="Share something (max ${postCharCount} chars). Markdown is supported!" required style="width: 100%; border: 1px solid #ccc;"></textarea>
                 
                 <p style="margin-bottom: 5px; margin-top: 5px;">Attach Image (Optional, max 5MB):</p>
                 <input type="file" name="postImage" accept="image/jpeg,image/png,image/gif" style="width: 100%; padding: 0; margin-bottom: 5px; border: none;">
@@ -1313,7 +1350,8 @@ app.get('/', requireLogin, async (req, res) => {
                 `;
             }
 
-            const linkedContent = linkifyContent(post.content);
+            // PATCHED: Use renderPostContent for sanitization and markdown
+            const linkedContent = renderPostContent(post.content);
             
             // NEW: Create link to user profile
             const userLink = post.userId === req.user.id 
@@ -1330,7 +1368,7 @@ app.get('/', requireLogin, async (req, res) => {
                     <div style="clear: both;"></div>
 
                     ${postImageHtml}
-                    <p class="post-text">${linkedContent}</p>
+                    <div class="post-text">${linkedContent}</div>
                     
                     <div class="post-actions">
                         <form action="/like" method="POST" style="display: inline; margin-right: 10px;">
