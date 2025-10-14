@@ -228,8 +228,10 @@ const IE5_STYLES = `
     }
     .main-col {
         float: left; 
-        width: 48%; /* Adjusted to leave room for the nav and side columns */
+        width: 30%; /* Adjusted to leave room for the nav and side columns */
         padding: 0 10px;
+        padding-left: 20px;
+        padding-right: 12px;
         min-height: 400px;
         box-sizing: border-box;
     }
@@ -238,6 +240,7 @@ const IE5_STYLES = `
         width: 30%;
         padding-left: 10px;
         min-height: 400px;
+        text-align: right;
         box-sizing: border-box;
     }
     .box {
