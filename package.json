@@ -8,6 +8,7 @@
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "dependencies": {
+    "@mshibanami-org/markdown-it-sanitize-html": "^1.0.10",
     "bcrypt": "^5.1.1",
     "better-sqlite3": "^12.4.1",
     "dotenv": "^16.4.5",
@@ -15,8 +16,9 @@
     "express-session": "^1.18.2",
     "imagemin": "^9.0.1",
     "imagemin-gifsicle": "^7.0.0",
+    "imagemin-mozjpeg": "^10.0.0",
+    "imagemin-pngquant": "^10.0.0",
     "markdown-it": "^14.1.0",
-    "@mshibanami-org/markdown-it-sanitize-html": "^1.0.10",
     "multer": "^2.0.2",
     "quick.db": "^9.1.7",
     "sharp": "^0.34.4"
