@@ -24,13 +24,10 @@ const domain = process.env.DOMAIN || `localhost:${port}`;
 const MarkdownIt = require('markdown-it'); 
 const markdownItSanitizeHtml = require('@mshibanami-org/markdown-it-sanitize-html'); 
 
-// IMAGE OPTIMIZATION: Dependencies
+// NEW: Image Compression Dependencies
+const sharp = require('sharp');
 const imagemin = require('imagemin');
-// FIX: Using wrapper functions for the imagemin plugins to handle potential ESM/CJS compatibility issues
-// This ensures that even if the required module returns an object, we correctly access the function.
 const imageminGifsicle = require('imagemin-gifsicle');
-const imageminMozjpeg = require('imagemin-mozjpeg');
-const imageminPngquant = require('imagemin-pngquant');
 
 // Initialize markdown-it and apply the sanitizer plugin (XSS Prevention)
 const md = new MarkdownIt({
@@ -60,50 +57,42 @@ md.use(markdownItSanitizeHtml, {
  * @param {string} filePath The full path to the file (e.g., /path/to/uploads/pfp-123.jpg)
  */
 async function optimizeImage(filePath) {
-    if (!filePath) return;
-    
+    const absolutePath = path.resolve(filePath);
     const extension = path.extname(filePath).toLowerCase();
-    const sourceDir = path.dirname(filePath);
-    let plugins = [];
     
     try {
-        switch (extension) {
-            case '.gif':
-                // Mid-level lossy compression for GIFs (lossy: 30)
-                plugins.push(imageminGifsicle({ 
-                    optimizationLevel: 3, 
-                    lossy: 30 
-                }));
-                break;
-            case '.jpg':
-            case '.jpeg':
-                // Lossy JPEG compression (Quality 80)
-                // The fix is here: calling the required module as a function which returns the plugin function.
-                plugins.push(imageminMozjpeg({ quality: 80 }));
-                break;
-            case '.png':
-                // Lossy PNG compression (Quality 60-80)
-                plugins.push(imageminPngquant({ quality: [0.6, 0.8] }));
-                break;
-            default:
-                console.log(`[OPTIMIZER] Skipping unsupported file type: ${extension}`);
-                return;
+        if (extension == "gif") {
+            // GIF Compression (Optimization) using imagemin-gifsicle
+            const files = await imagemin([absolutePath], {
+                plugins: [
+                    // Use optimizationLevel 3 for good, lossless compression
+                    imageminGifsicle({ optimizationLevel: 3, lossy: 128 })
+                ]
+            });
+            
+            // Overwrite the original file with the compressed buffer
+            if (files.length > 0) {
+                await fs.promises.writeFile(absolutePath, files[0].data);
+            }
+            
+        } else if (extension == 'jpeg' || extension == 'jpg' || extension == 'image/png') {
+            // JPEG/PNG Compression/Resizing using sharp
+            let sharpInstance = sharp(absolutePath)
+                // Resize to a fixed PFP size (e.g., 200x200) or maximum post size (800px)
+                .resize({ width: 200, height: 200, fit: 'cover', withoutEnlarging: true }); // Using 200x200 for PFP context, or remove for general compression
+
+            // Apply compression quality and format
+            sharpInstance = sharpInstance.toFormat(mimeType.endsWith('jpeg') ? 'jpeg' : 'png', { quality: 72 });
+
+            await sharpInstance.toFile(absolutePath); // Overwrites the original file
+
         }
+        // If other file types make it through, they are left uncompressed.
+
     } catch (e) {
-        console.error(`[OPTIMIZER] Plugin loading error for ${extension}:`, e.message);
-        // Fallback to skip optimization if plugin fails to load
-        return;
-    }
-    
-    try {
-        // Run imagemin to read the file, process it, and overwrite the original
-        await imagemin([filePath], {
-            destination: sourceDir,
-            plugins: plugins
-        });
-        console.log(`[OPTIMIZER] Successfully optimized: ${filePath}`);
-    } catch (e) {
-        console.error(`[OPTIMIZER] Error optimizing file ${filePath}:`, e.message);
+        // Log the error but continue execution. The original file will remain on disk, 
+        // preventing the entire post from failing due to a compression error.
+        console.error(`Image compression/resizing failed for ${path.basename(filePath)}:`, e);
     }
 }
 
