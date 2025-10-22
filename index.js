@@ -1500,7 +1500,11 @@ app.get('/', requireLogin, async (req, res) => {
         </div>
     `;
 
-    res.send(createHtml('Home', finalContent, error, req.user));
+    try {
+        res.send(createHtml('Home', finalContent, error, req.user));
+    } catch {
+        res.send(createHtml('Home', finalContent, "Error 500", ""));
+    }
 });
 
 // Fallback to redirect non-logged-in users
