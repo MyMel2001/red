@@ -59,6 +59,7 @@ md.use(markdownItSanitizeHtml, {
 async function optimizeImage(filePath) {
     // FIX: Using path.resolve to get the absolute path from the potentially relative filePath
     const absolutePath = path.resolve(filePath); 
+    const tmpPath = path.resolve(`${filePath}.tmp`); 
     const extension = path.extname(filePath).toLowerCase();
     
     try {
@@ -88,7 +89,9 @@ async function optimizeImage(filePath) {
             sharpInstance = sharpInstance.toFormat(format, { quality: 72 });
 
             // Overwrites the original file
-            await sharpInstance.toFile(absolutePath); 
+            await sharpInstance.toFile(tmpPath); 
+            await fs.rm(absolutePath)
+            await fs.rename(tmpPath, absolutePath)
         }
         // If other file types make it through, they are left uncompressed.
 
