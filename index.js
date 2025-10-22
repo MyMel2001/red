@@ -63,21 +63,7 @@ async function optimizeImage(filePath) {
     const extension = path.extname(filePath).toLowerCase();
     
     try {
-        if (extension == ".gif") {
-            // GIF Compression (Optimization) using imagemin-gifsicle
-            const files = await imagemin([absolutePath], {
-                plugins: [
-                    // Use optimizationLevel 3 for good, lossless compression
-                    imageminGifsicle({ optimizationLevel: 3, lossy: 128 })
-                ]
-            });
-            
-            // Overwrite the original file with the compressed buffer
-            if (files.length > 0) {
-                await fs.promises.writeFile(absolutePath, files[0].data);
-            }
-            
-        } else if (extension === '.jpeg' || extension === '.jpg' || extension === '.png') {
+        if (extension === '.jpeg' || extension === '.jpg' || extension === '.png' || extension == ".gif") {
             // JPEG/PNG Compression/Resizing using sharp
             let sharpInstance = sharp(absolutePath)
                 // Resize to a fixed PFP size (e.g., 200x200) or maximum post size (800px)
