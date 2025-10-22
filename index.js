@@ -91,9 +91,7 @@ async function optimizeImage(filePath) {
             // Overwrites the original file
             await sharpInstance.toFile(tmpPath); 
             await fs.rm(absolutePath)
-            await fs.rename(tmpPath, absolutePath, function(err) {
-                if ( err ) console.log('ERROR: ' + err);
-            });
+            await fs.renameSync(tmpPath, absolutePath);
         }
         // If other file types make it through, they are left uncompressed.
 
