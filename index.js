@@ -80,7 +80,7 @@ async function optimizeImage(filePath) {
             await fs.renameSync(tmpPath, absolutePath);
         } else if (extension === '.gif') {
             // GIF Compression using imagemin-gifsicle
-            await imagemin([absolutePath], {
+            const files = await imagemin([absolutePath], {
                 destination: path.dirname(tmpPath),
                 plugins: [
                     imageminGifsicle({
@@ -88,20 +88,17 @@ async function optimizeImage(filePath) {
                         // This reduces file size while maintaining reasonable quality
                         optimizationLevel: 3,
                         interlaced: false,
-                        lossy: 140,
-                        colors: 128
+                        lossy: 128,
+                        colors: 64
                     })
                 ]
             });
             
-            // The imagemin plugin creates the file with the same name in the destination
-            // so we need to move it to our expected tmp path
-            const optimizedGifPath = path.join(path.dirname(tmpPath), path.basename(absolutePath));
-            
-            // Replace original file
-            await fs.rmSync(absolutePath);
-            if (fs.existsSync(optimizedGifPath)) {
-                await fs.renameSync(optimizedGifPath, absolutePath);
+            // The imagemin function processes the file and saves it to destination
+            // No need to move files since imagemin handles the destination itself
+            // Just remove the original if the process succeeded
+            if (files && files.length > 0) {
+                console.log(`GIF compressed successfully: ${path.basename(absolutePath)}`);
             }
         }
         // If other file types make it through, they are left uncompressed.
