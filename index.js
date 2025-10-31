@@ -87,9 +87,8 @@ async function optimizeImage(filePath) {
                     imageminGifsicle({
                         // Use mid-level lossy compression for GIFs
                         // This reduces file size while maintaining reasonable quality
-                        optimizationLevel: 3,
+                        optimizationLevel: 2,
                         interlaced: false,
-                        lossy: 128,
                         colors: 64
                     })
                 ]
