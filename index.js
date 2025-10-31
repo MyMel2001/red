@@ -53,7 +53,7 @@ md.use(markdownItSanitizeHtml, {
 
 /**
  * Optimizes an uploaded image file in place.
- * Uses lossy compression for JPG and PNG, and mid-level lossy for GIF.
+ * Uses lossy compression for JPG and PNG, and lossy compression for GIF.
  * @param {string} filePath The full path to the file (e.g., /path/to/uploads/pfp-123.jpg)
  */
 async function optimizeImage(filePath) {
@@ -63,7 +63,7 @@ async function optimizeImage(filePath) {
     const extension = path.extname(filePath).toLowerCase();
     
     try {
-        if (extension === '.jpeg' || extension === '.jpg' || extension === '.png' || extension == ".gif") {
+        if (extension === '.jpeg' || extension === '.jpg' || extension === '.png') {
             // JPEG/PNG Compression/Resizing using sharp
             let sharpInstance = sharp(absolutePath)
                 // Resize to a fixed PFP size (e.g., 200x200) or maximum post size (800px)
@@ -78,6 +78,30 @@ async function optimizeImage(filePath) {
             await sharpInstance.toFile(tmpPath); 
             await fs.rmSync(absolutePath)
             await fs.renameSync(tmpPath, absolutePath);
+        } else if (extension === '.gif') {
+            // GIF Compression using imagemin-gifsicle
+            await imagemin([absolutePath], {
+                destination: path.dirname(tmpPath),
+                plugins: [
+                    imageminGifsicle({
+                        // Use mid-level lossy compression for GIFs
+                        // This reduces file size while maintaining reasonable quality
+                        optimizationLevel: 3,
+                        interlaced: false,
+                        lossy: 60
+                    })
+                ]
+            });
+            
+            // The imagemin plugin creates the file with the same name in the destination
+            // so we need to move it to our expected tmp path
+            const optimizedGifPath = path.join(path.dirname(tmpPath), path.basename(absolutePath));
+            
+            // Replace original file
+            await fs.rmSync(absolutePath);
+            if (fs.existsSync(optimizedGifPath)) {
+                await fs.renameSync(optimizedGifPath, absolutePath);
+            }
         }
         // If other file types make it through, they are left uncompressed.
 
@@ -85,6 +109,15 @@ async function optimizeImage(filePath) {
         // Log the error but continue execution. The original file will remain on disk, 
         // preventing the entire post from failing due to a compression error.
         console.error(`Image compression/resizing failed for ${path.basename(filePath)}:`, e);
+        
+        // Clean up any temporary files in case of error
+        try {
+            if (fs.existsSync(tmpPath)) {
+                await fs.rmSync(tmpPath);
+            }
+        } catch (cleanupError) {
+            console.error('Error cleaning up temporary file:', cleanupError);
+        }
     }
 }
 
