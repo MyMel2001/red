@@ -79,21 +79,23 @@ async function optimizeImage(filePath) {
             await fs.rmSync(absolutePath)
             await fs.renameSync(tmpPath, absolutePath);
         } else if (extension === '.gif') {
-            // GIF Compression using imagemin-gifsicle (v9+ API)
-            // Note: imagemin v9+ changed the API - it's now an object with methods
-            const files = await imagemin.gifsicle([absolutePath], {
+            // GIF Compression using imagemin with imagemin-gifsicle plugin (v9+ API)
+            // Note: imagemin v9+ changed the API - plugins are now passed as an array
+            const files = await imagemin([absolutePath], {
                 destination: path.dirname(tmpPath),
-                options: {
-                    // Use mid-level lossy compression for GIFs
-                    // This reduces file size while maintaining reasonable quality
-                    optimizationLevel: 3,
-                    interlaced: false,
-                    lossy: 128,
-                    colors: 64
-                }
+                plugins: [
+                    imageminGifsicle({
+                        // Use mid-level lossy compression for GIFs
+                        // This reduces file size while maintaining reasonable quality
+                        optimizationLevel: 3,
+                        interlaced: false,
+                        lossy: 128,
+                        colors: 64
+                    })
+                ]
             });
             
-            // The imagemin.gifsicle function processes the file and saves it to destination
+            // The imagemin function processes the file and saves it to destination
             // Replace original file with optimized version
             if (files && files.length > 0) {
                 await fs.rmSync(absolutePath);
