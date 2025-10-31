@@ -79,26 +79,29 @@ async function optimizeImage(filePath) {
             await fs.rmSync(absolutePath)
             await fs.renameSync(tmpPath, absolutePath);
         } else if (extension === '.gif') {
-            // GIF Compression using imagemin-gifsicle
-            const files = await imagemin([absolutePath], {
+            // GIF Compression using imagemin-gifsicle (v9+ API)
+            // Note: imagemin v9+ changed the API - it's now an object with methods
+            const files = await imagemin.gifsicle([absolutePath], {
                 destination: path.dirname(tmpPath),
-                plugins: [
-                    imageminGifsicle({
-                        // Use mid-level lossy compression for GIFs
-                        // This reduces file size while maintaining reasonable quality
-                        optimizationLevel: 3,
-                        interlaced: false,
-                        lossy: 128,
-                        colors: 64
-                    })
-                ]
+                options: {
+                    // Use mid-level lossy compression for GIFs
+                    // This reduces file size while maintaining reasonable quality
+                    optimizationLevel: 3,
+                    interlaced: false,
+                    lossy: 128,
+                    colors: 64
+                }
             });
             
-            // The imagemin function processes the file and saves it to destination
-            // No need to move files since imagemin handles the destination itself
-            // Just remove the original if the process succeeded
+            // The imagemin.gifsicle function processes the file and saves it to destination
+            // Replace original file with optimized version
             if (files && files.length > 0) {
-                console.log(`GIF compressed successfully: ${path.basename(absolutePath)}`);
+                await fs.rmSync(absolutePath);
+                const optimizedFile = files[0];
+                if (optimizedFile && optimizedFile.data) {
+                    await fs.writeFileSync(absolutePath, optimizedFile.data);
+                    console.log(`GIF compressed successfully: ${path.basename(absolutePath)}`);
+                }
             }
         }
         // If other file types make it through, they are left uncompressed.
