@@ -502,6 +502,85 @@ const IE5_STYLES = `
     .nav-col, .main-col, .side-col {
         float: left;
     }
+    
+    /* DM Thread Specific Styles */
+    .dm-thread-container {
+        background-color: #fff;
+        border: 1px solid #ccc;
+        border-radius: 8px;
+        padding: 0;
+        margin-bottom: 20px;
+    }
+    
+    .dm-thread-header {
+        background-color: #f0f8ff;
+        border-bottom: 1px solid #cceeff;
+        padding: 15px;
+        margin: 0;
+    }
+    
+    .dm-thread-messages {
+        max-height: 400px;
+        overflow-y: scroll;
+        padding: 15px;
+        background-color: #fff;
+    }
+    
+    .dm-message {
+        border: 1px solid #ccc;
+        margin-bottom: 10px;
+        padding: 10px;
+        border-radius: 8px;
+        max-width: 70%;
+    }
+    
+    .dm-message.sent {
+        background-color: #e6f7ff;
+        border-color: #0077cc;
+        margin-left: auto;
+        text-align: right;
+    }
+    
+    .dm-message.received {
+        background-color: #f9f9f9;
+        border-color: #ccc;
+        margin-right: auto;
+        text-align: left;
+    }
+    
+    .dm-message-content {
+        font-size: 14px;
+        line-height: 1.4;
+    }
+    
+    .dm-quick-reply {
+        border-top: 1px solid #eee;
+        padding: 15px;
+        background-color: #f9f9f9;
+    }
+    
+    .dm-user-info {
+        display: flex;
+        align-items: center;
+        padding: 10px;
+        background-color: #f0f8ff;
+        border: 1px solid #cceeff;
+        margin-bottom: 15px;
+        border-radius: 6px;
+    }
+    
+    .dm-user-info .pfp {
+        width: 40px;
+        height: 40px;
+        margin-right: 15px;
+    }
+    
+    .dm-thread-count {
+        font-size: 12px;
+        color: #666;
+        text-align: center;
+        margin-top: 5px;
+    }
 `;
 
 // Navigation Content HTML fragment
@@ -1248,11 +1327,19 @@ app.get('/inbox', requireLogin, async (req, res) => {
         .sort((a, b) => b.timestamp - a.timestamp);
 
     const threads = {};
+    const unreadCounts = {};
+    
+    // Group messages by sender and count unread
     for (const msg of receivedMessages) {
-        if (!threads[msg.senderUsername]) {
-            threads[msg.senderUsername] = [];
+        if (!threads[msg.senderId]) {
+            threads[msg.senderId] = [];
+            unreadCounts[msg.senderId] = 0;
         }
-        threads[msg.senderUsername].push(msg);
+        threads[msg.senderId].push(msg);
+        
+        // Count unread messages (simple implementation - all received messages are "unread" for now)
+        // In a real app, you'd have a read/unread flag per message
+        unreadCounts[msg.senderId]++;
     }
     
     let inboxHtml = '';
@@ -1262,18 +1349,42 @@ app.get('/inbox', requireLogin, async (req, res) => {
         inboxHtml = '<p>Your inbox is empty.</p>';
     } else {
         inboxHtml += '<h2>Message Threads</h2>';
-        for (const senderUsername in threads) {
-            const latestMsg = threads[senderUsername][0];
-            const senderUser = Object.values(users).find(u => u.username === senderUsername);
-            const senderId = senderUser ? senderUser.id : 'unknown';
+        
+        // Sort threads by latest message timestamp
+        const sortedThreadEntries = Object.entries(threads).sort(([, msgsA], [, msgsB]) => {
+            return msgsB[0].timestamp - msgsA[0].timestamp;
+        });
+
+        for (const [senderId, messages] of sortedThreadEntries) {
+            const latestMsg = messages[0];
+            const senderUser = Object.values(users).find(u => u.id === senderId);
+            const senderUsername = senderUser ? senderUser.username : 'Unknown';
+            const unreadCount = unreadCounts[senderId];
 
             inboxHtml += `
-                <div class="post">
-                    <p><strong>From: <a href="/user/${senderUsername}" class="post-user">${senderUsername}</a></strong> 
-                    <small>(${latestMsg.date})</small></p>
-                    <p class="post-text" style="margin-left: 0;">${latestMsg.content.substring(0, 50)}...</p>
-                    <p><a href="/compose?recipient=${senderUsername}">Reply</a> 
-                    | <a href="/inbox/view/${senderId}">View Thread (Not Implemented)</a></p>
+                <div class="post" style="border: 1px solid #ccc; margin-bottom: 15px; padding: 15px;">
+                    <div style="display: flex; justify-content: space-between; align-items: flex-start;">
+                        <div style="flex: 1;">
+                            <img src="${senderUser ? senderUser.pfpUrl : '/uploads/default-pfp.png'}" class="pfp" style="width: 40px; height: 40px;">
+                            <div style="margin-left: 50px;">
+                                <p style="margin: 0;">
+                                    <strong>From: <a href="/user/${senderUsername}" class="post-user">${senderUsername}</a></strong>
+                                    ${unreadCount > 0 ? `<span style="background-color: #ff6b6b; color: white; padding: 2px 6px; border-radius: 10px; font-size: 12px; margin-left: 8px;">${unreadCount} new</span>` : ''}
+                                </p>
+                                <p style="margin: 5px 0 0 0;"><small>${latestMsg.date}</small></p>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div style="margin-left: 50px; margin-top: 10px;">
+                        <p class="post-text" style="margin: 0; color: #333;">${latestMsg.content.length > 100 ? latestMsg.content.substring(0, 100) + '...' : latestMsg.content}</p>
+                    </div>
+                    
+                    <div style="margin-left: 50px; margin-top: 10px;">
+                        <a href="/compose?recipient=${senderUsername}" style="font-size: 12px; color: #0077cc; text-decoration: none;">Reply</a>
+                        <span style="margin: 0 8px; color: #ccc;">|</span>
+                        <a href="/inbox/view/${senderId}" style="font-size: 12px; color: #0077cc; text-decoration: none;">View Thread (${messages.length} messages)</a>
+                    </div>
                 </div>
             `;
         }
@@ -1284,7 +1395,12 @@ app.get('/inbox', requireLogin, async (req, res) => {
     const finalContent = `
         ${navContent('')}
         ${mainColContent}
-        <div class="side-col"><div class="box"><p><a href="/compose">Compose New Message</a></p></div></div>
+        <div class="side-col">
+            <div class="box">
+                <p><a href="/compose">Compose New Message</a></p>
+                <p style="font-size: 12px; color: #666;">Click "View Thread" to see your full conversation.</p>
+            </div>
+        </div>
     `;
     res.send(createHtml('Inbox', finalContent, req.query.error, req.user));
 });
@@ -1350,7 +1466,110 @@ app.post('/compose', requireLogin, async (req, res) => {
     res.redirect(`/inbox?error=${encodeURIComponent('Message sent to ' + recipientUser.username + '!')}`);
 });
 
+// NEW ROUTE: GET /inbox/view/:userId - View full thread with specific user
+app.get('/inbox/view/:userId', requireLogin, async (req, res) => {
+    const otherUserId = req.params.userId;
+    const error = req.query.error || '';
+    const currentUserId = req.user.id;
 
+    // Get the other user information
+    const otherUser = await getUserById(otherUserId);
+    if (!otherUser) {
+        return res.redirect(`/inbox?error=${encodeURIComponent('User not found.')}`);
+    }
+
+    // Get all messages between current user and the other user
+    const messagesRaw = await db.get('messages');
+    const allMessages = Array.isArray(messagesRaw) ? messagesRaw : [];
+
+    // Filter messages for this conversation (both directions)
+    const conversationMessages = allMessages.filter(msg => 
+        (msg.senderId === currentUserId && msg.recipientId === otherUserId) ||
+        (msg.senderId === otherUserId && msg.recipientId === currentUserId)
+    ).sort((a, b) => a.timestamp - b.timestamp); // Sort chronologically
+
+    let conversationHtml = '';
+    if (conversationMessages.length === 0) {
+        conversationHtml = '<p>No messages yet. Start the conversation!</p>';
+    } else {
+        conversationMessages.forEach(msg => {
+            const isFromCurrentUser = msg.senderId === currentUserId;
+            const messageAlignment = isFromCurrentUser ? 'text-align: right;' : 'text-align: left;';
+            const messageBg = isFromCurrentUser ? 'background-color: #e6f7ff;' : 'background-color: #f9f9f9;';
+            const borderColor = isFromCurrentUser ? 'border-color: #0077cc;' : 'border-color: #ccc;';
+            
+            conversationHtml += `
+                <div class="post" style="border: 1px solid ${borderColor}; margin-bottom: 10px; padding: 10px; ${messageAlignment}">
+                    <div style="display: inline-block; max-width: 70%; ${messageBg}; padding: 10px; border-radius: 8px;">
+                        <div style="margin-bottom: 5px;">
+                            <img src="${isFromCurrentUser ? req.user.pfpUrl : otherUser.pfpUrl}" class="pfp" style="width: 30px; height: 30px; float: ${isFromCurrentUser ? 'right' : 'left'};">
+                            <div style="margin-${isFromCurrentUser ? 'right' : 'left'}: 40px;">
+                                <strong style="font-size: 12px; color: #0077cc;">${isFromCurrentUser ? 'You' : otherUser.username}</strong>
+                                <small style="color: #666; font-size: 10px;"> - ${msg.date}</small>
+                            </div>
+                            <div style="clear: both;"></div>
+                        </div>
+                        <div style="font-size: 14px; line-height: 1.4; text-align: left;">${msg.content.replace(/\n/g, '<br>')}</div>
+                    </div>
+                    <div style="clear: both;"></div>
+                </div>
+            `;
+        });
+    }
+
+    // Quick reply form
+    const quickReplyForm = `
+        <div class="post" style="border: 1px solid #0077cc; padding: 15px; margin-top: 15px;">
+            <h3 style="margin-top: 0; color: #0077cc;">Quick Reply to ${otherUser.username}</h3>
+            <form action="/compose" method="POST">
+                <input type="hidden" name="recipient" value="${otherUser.username}">
+                <textarea name="content" rows="4" required placeholder="Type your reply..." style="width: 100%; border: 1px solid #ccc;"></textarea>
+                <div style="margin-top: 10px;">
+                    <input type="submit" value="Send Reply" style="background-color: #3cb371;">
+                    <a href="/inbox" style="margin-left: 10px; font-size: 12px; color: #666;">Back to Inbox</a>
+                </div>
+            </form>
+        </div>
+    `;
+
+    const mainColContent = `
+        <div class="main-col">
+            <div class="box">
+                <h2>Conversation with ${otherUser.username}</h2>
+                <div style="margin-bottom: 15px; padding: 10px; background-color: #f0f8ff; border: 1px solid #cceeff;">
+                    <img src="${otherUser.pfpUrl}" class="pfp" style="width: 40px; height: 40px;">
+                    <div style="margin-left: 50px;">
+                        <p style="margin: 0;"><strong>${otherUser.username}</strong></p>
+                        <p style="margin: 5px 0 0 0; font-size: 14px; color: #666;">${otherUser.bio}</p>
+                        <p style="margin: 5px 0 0 0; font-size: 12px; color: #888;">Joined: ${otherUser.joinDate}</p>
+                    </div>
+                    <div style="clear: both;"></div>
+                </div>
+                
+                <div style="max-height: 400px; overflow-y: scroll; border: 1px solid #eee; padding: 10px; background-color: #fff;">
+                    ${conversationHtml}
+                </div>
+                
+                ${quickReplyForm}
+            </div>
+        </div>
+    `;
+
+    const finalContent = `
+        ${navContent('')}
+        ${mainColContent}
+        <div class="side-col">
+            <div class="box">
+                <p><a href="/user/${otherUser.username}">View ${otherUser.username}'s Profile</a></p>
+                <p><a href="/compose?recipient=${otherUser.username}">Compose New Message</a></p>
+                <p><a href="/inbox">Back to Inbox</a></p>
+                <p style="font-size: 12px; color: #666;">${conversationMessages.length} messages in this conversation.</p>
+            </div>
+        </div>
+    `;
+
+    res.send(createHtml(`Thread with ${otherUser.username}`, finalContent, error, req.user));
+});
 // GET / - Home/Feed Page 
 app.get('/', requireLogin, async (req, res) => {
     const error = req.query.error || '';
