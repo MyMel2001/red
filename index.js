@@ -88,7 +88,8 @@ async function optimizeImage(filePath) {
                         // This reduces file size while maintaining reasonable quality
                         optimizationLevel: 3,
                         interlaced: false,
-                        lossy: 60
+                        lossy: 140,
+                        colors: 128
                     })
                 ]
             });
