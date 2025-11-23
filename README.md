@@ -1,6 +1,6 @@
-# X-erpt
+# Red (Formerly "x-erpt")
 
-The FOSS version of Swift.
+The FOSS version of Indigo (Swift).
 
 ## Credits
 
