@@ -307,6 +307,8 @@ const IE5_STYLES = `
         font-family: Arial, sans-serif; 
         margin: 0; 
         padding: 0;
+        background-color: #250404;
+        color: white;
     }
     .header-wrapper {
         background-color: #cc0000; /* HEADER: Red background */
@@ -333,6 +335,7 @@ const IE5_STYLES = `
         font-size: 12px;
         padding-right: 10px;
         line-height: 20px;
+        color: rgb(191, 191, 191)
     }
     .header-right a {
         background-color: #cc0000; /* HEADER BUTTON/LINK: Red background */
@@ -352,8 +355,7 @@ const IE5_STYLES = `
         width: 18%; 
         min-height: 400px;
         font-size: 14px;
-        /* CORRECT STYLES for White Box: */
-        background-color: #ffffff; 
+        background-color: #555555; 
         padding: 15px; 
         margin-right: 20px; 
         box-sizing: border-box; 
@@ -368,7 +370,8 @@ const IE5_STYLES = `
         padding-right: 12px;
         min-height: 400px;
         box-sizing: border-box;
-        background-color: #ffffff; /* Main content background remains white for contrast */
+        background-color: red;
+        color: red;
         border: 1px solid #ccc;
     }
     .side-col {
@@ -381,20 +384,25 @@ const IE5_STYLES = `
         box-sizing: border-box;
     }
     .box {
-        background-color: #ffffff; 
+        background-color: black;
+        color: red;
         border: 1px solid #ccc; 
         padding: 15px; 
         margin-bottom: 20px;
     }
+    .box a {
+    color: red;
+    }
     h2 {
         font-size: 16px;
-        color: #333; 
+        background-color: #676767;
+        color: red; 
         border-bottom: 1px solid #eee; 
         padding-bottom: 5px;
         margin-top: 0;
     }
     .nav-col h2 {
-        color: #000;
+        color: #750b0b;
         margin: 15px 0 5px 0; 
         font-weight: bold;
         border-bottom: 1px solid #ccc; 
@@ -405,11 +413,11 @@ const IE5_STYLES = `
         margin-top: 0;
     }
     .nav-col p {
-        color: #000;
+        color: #ab6363;
         margin: 5px 0;
     }
     .nav-col a {
-        color: #000;
+        color: #d00a0a;
         text-decoration: none;
         display: block;
         padding: 2px 0;
@@ -654,7 +662,7 @@ function navContent(trendingHtml = '') {
 // Generic HTML structure generator
 function createHtml(title, bodyContent, error = '', user = null) {
     const headerRight = user 
-        ? `<span style="color:#333;">Welcome, ${user.username}</span> <a href="/logout">Logout</a>`
+        ? `<span style="color:rgb(191, 191, 191);">Welcome, ${user.username}</span> <a href="/logout">Logout</a>`
         : '';
 
     return `
