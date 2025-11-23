@@ -302,21 +302,20 @@ async function getPostById(postId) {
 
 
 // Full, self-contained CSS block for retro aesthetic
-const IE5_STYLES = `
+const IE5_STYLES_RED_THEME = `
     body { 
         font-family: Arial, sans-serif; 
-        background-color: #a4e5ed;
         margin: 0; 
         padding: 0;
     }
     .header-wrapper {
-        background-color: #ffffff;
+        background-color: #cc0000; /* HEADER: Red background */
         padding: 10px 0;
         margin-bottom: 20px;
-        border-bottom: 1px solid #cceeff;
+        border-bottom: 1px solid #990000; /* Darker red border */
     }
     .header {
-        background-color: #ffffff;
+        background-color: #cc0000; /* HEADER: Red background */
         padding: 0 10px; 
         text-align: left;
         width: 900px;
@@ -324,7 +323,7 @@ const IE5_STYLES = `
         box-sizing: border-box;
     }
     .header h1 { 
-        color: #0077cc; 
+        color: white; /* HEADER: White text */
         margin: 0; 
         font-size: 20px;
         display: inline;
@@ -336,11 +335,11 @@ const IE5_STYLES = `
         line-height: 20px;
     }
     .header-right a {
-        background-color: #ff8c00;
-        color: white;
+        background-color: #cc0000; /* HEADER BUTTON/LINK: Red background */
+        color: white; /* HEADER BUTTON/LINK: White text */
         text-decoration: none;
         padding: 5px 10px;
-        border: none;
+        border: 1px solid white; /* Added white border for contrast */
     }
     .container {
         width: 900px;
@@ -350,25 +349,27 @@ const IE5_STYLES = `
     }
     .nav-col {
         float: left; 
-        width: 18%; /* Keeps the width for proportion */
+        width: 18%; 
         min-height: 400px;
         font-size: 14px;
         /* CORRECT STYLES for White Box: */
         background-color: #ffffff; 
-        padding: 15px; /* Padding inside the white box */
-        margin-right: 20px; /* Space between nav-col and main-col */
-        box-sizing: border-box; /* Include padding/border in width */
-        border: 1px solid #ccc; /* Add border for distinct box look */
-        text-align: left; /* Ensure content is left-aligned */
+        padding: 15px; 
+        margin-right: 20px; 
+        box-sizing: border-box; 
+        border: 1px solid #ccc; 
+        text-align: left; 
     }
     .main-col {
         float: left; 
-        width: 64%; /* Adjusted to leave room for the nav and side columns */
+        width: 64%; 
         padding: 0 10px;
         padding-left: 20px;
         padding-right: 12px;
         min-height: 400px;
         box-sizing: border-box;
+        background-color: #ffffff; /* Main content background remains white for contrast */
+        border: 1px solid #ccc;
     }
     .side-col {
         float: right; 
@@ -392,12 +393,11 @@ const IE5_STYLES = `
         padding-bottom: 5px;
         margin-top: 0;
     }
-    /* FIX: Corrected internal nav styles to ensure links and headers are visually contained */
     .nav-col h2 {
-        color: #0077cc;
-        margin: 15px 0 5px 0; /* Add margin above to separate sections */
+        color: #000;
+        margin: 15px 0 5px 0; 
         font-weight: bold;
-        border-bottom: 1px solid #cceeff; /* Lighter border for inner separators */
+        border-bottom: 1px solid #ccc; 
         padding-bottom: 3px;
         font-size: 16px;
     }
@@ -405,11 +405,11 @@ const IE5_STYLES = `
         margin-top: 0;
     }
     .nav-col p {
-        color: #0077cc;
+        color: #000;
         margin: 5px 0;
     }
     .nav-col a {
-        color: #0077cc;
+        color: #000;
         text-decoration: none;
         display: block;
         padding: 2px 0;
@@ -436,7 +436,7 @@ const IE5_STYLES = `
     }
     .post-user { 
         font-weight: bold; 
-        color: #0077cc; 
+        color: #000; /* Changed to black for better contrast on white background */
         font-size: 14px;
     }
     .post-text { 
@@ -463,20 +463,25 @@ const IE5_STYLES = `
         box-sizing: border-box;
     }
     input[type="submit"], button {
-        background-color: #0077cc; 
-        color: white; 
+        background-color: #cc0000; /* BUTTON: Red background */
+        color: white; /* BUTTON: White text */
         border: none; 
         padding: 8px 15px; 
         cursor: pointer; 
         font-size: 14px;
         display: inline-block;
     }
-    input[type="submit"]:hover {
-        background-color: #005fa3;
+    input[type="submit"]:hover, button:hover {
+        background-color: #990000; /* BUTTON HOVER: Darker red */
     }
     .error {
-        color: red; 
+        background-color: #800000; /* ERROR: Maroon background */
+        color: white; /* ERROR: White text */
         font-weight: bold;
+        padding: 8px;
+        margin: 10px 0;
+        display: block;
+        border: 1px solid #4d0000; /* Darker border for maroon box */
     }
     .post-actions {
         display: inline-block;
@@ -485,7 +490,7 @@ const IE5_STYLES = `
         margin-left: 45px;
     }
     .like-button {
-        color: #0077cc;
+        color: #000; /* Changed to black for visibility */
         cursor: pointer;
         background: none;
         border: none;
@@ -496,13 +501,11 @@ const IE5_STYLES = `
         margin-right: 10px;
     }
     .like-button:hover {
-        color: #005fa3;
+        color: #555;
     }
     /* IE5/Mobile Dynamic Shim */
     .flex-shim .nav-col, .flex-shim .main-col, .flex-shim .side-col {
-        /* This section overrides the float/width for mobile/narrow screens. 
-           It might not be strictly IE5 compatible, but handles modern fallback. 
-           Removing the float/width for the main layout to rely on the fixed 900px container width. */
+        /* This section overrides the float/width for mobile/narrow screens. */
     }
 
     /* Override the mobile shim for the 900px container to ensure layout */
@@ -549,8 +552,9 @@ const IE5_STYLES = `
     }
     
     .dm-thread-header {
-        background-color: #f0f8ff;
-        border-bottom: 1px solid #cceeff;
+        background-color: #cc0000; /* DM Header: Red background */
+        color: white; /* DM Header: White text */
+        border-bottom: 1px solid #990000;
         padding: 15px;
         margin: 0;
     }
@@ -571,8 +575,8 @@ const IE5_STYLES = `
     }
     
     .dm-message.sent {
-        background-color: #e6f7ff;
-        border-color: #0077cc;
+        background-color: #f9e6e6; /* Light red/pink for sent messages */
+        border-color: #cc0000;
         margin-left: auto;
         text-align: right;
     }
@@ -599,8 +603,9 @@ const IE5_STYLES = `
         display: flex;
         align-items: center;
         padding: 10px;
-        background-color: #f0f8ff;
-        border: 1px solid #cceeff;
+        background-color: #cc0000; /* DM User Info: Red background */
+        color: white; /* DM User Info: White text */
+        border: 1px solid #990000;
         margin-bottom: 15px;
         border-radius: 6px;
     }
@@ -613,7 +618,7 @@ const IE5_STYLES = `
     
     .dm-thread-count {
         font-size: 12px;
-        color: #666;
+        color: white; /* DM Thread Count: White text */
         text-align: center;
         margin-top: 5px;
     }
@@ -656,7 +661,7 @@ function createHtml(title, bodyContent, error = '', user = null) {
 <!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN" "http://www.w3.org/TR/html4/loose.dtd">
 <html>
 <head>
-    <title>x-erpt - ${title}</title>
+    <title>red - ${title}</title>
     <style type="text/css">
         ${IE5_STYLES}
     </style>
@@ -664,7 +669,7 @@ function createHtml(title, bodyContent, error = '', user = null) {
 <body>
     <div class="header-wrapper">
         <div class="header">
-            <h1>x-erpt</h1>
+            <h1>red</h1>
             <div class="header-right">${headerRight}</div>
             <div style="clear: both;"></div>
         </div>
@@ -724,7 +729,7 @@ app.post('/register', async (req, res) => {
             id: userId,
             username: username,
             password: hashedPassword,
-            bio: 'A new user on x-erpt!',
+            bio: 'A new user on red!',
             joinDate: new Date().toLocaleDateString('en-US'),
             pfpUrl: 'https://i.imgur.com/example_default_pfp.png',
             followers: [],
@@ -744,7 +749,7 @@ app.get('/login', (req, res) => {
     const content = `
         <div class="main-col" style="float: none; width: 100%; padding-right: 0;">
             <div class="box" style="width: 50%; margin: 40px auto; min-height: 0;">
-                <h2 style="text-align: center;">Welcome to x-erpt</h2>
+                <h2 style="text-align: center;">Welcome to red</h2>
                 <p style="text-align: center;">What are you doing?</p>
                 <form action="/login" method="POST">
                     <input type="text" name="username" placeholder="Username" required>
@@ -1223,7 +1228,7 @@ app.get('/search', requireLogin, async (req, res) => {
     const mainColContent = `
         <div class="main-col">
             <div class="box">
-                <h2>Search x-erpt</h2>
+                <h2>Search red</h2>
                 <form action="/search" method="GET">
                     <input type="text" name="q" value="${query}" placeholder="Search username, keyword, or #hashtag" required>
                     <input type="submit" value="Search">
@@ -1764,7 +1769,7 @@ app.get('/', (req, res) => {
 
 initializeDatabase().then(() => {
     app.listen(port, () => {
-        console.log(`[SERVER] x-erpt social network running at http://localhost:${port}`);
+        console.log(`[SERVER] red social network running at http://localhost:${port}`);
         console.log('[INFO] Designed for IE5+ compatibility using simple HTML/CSS and server-side rendering.');
     });
 }).catch(e => {
