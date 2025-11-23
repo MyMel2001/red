@@ -302,7 +302,7 @@ async function getPostById(postId) {
 
 
 // Full, self-contained CSS block for retro aesthetic
-const IE5_STYLES_RED_THEME = `
+const IE5_STYLES = `
     body { 
         font-family: Arial, sans-serif; 
         margin: 0; 
